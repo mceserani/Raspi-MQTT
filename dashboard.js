@@ -13,7 +13,6 @@ const SENSOR_DEFS = [
   { key: 'voc',             label: 'VOC',             unit: 'ppb',    min: 0,    max: 1000, decimals: 2 },
   { key: 'nox',             label: 'NOx',             unit: 'ppb',    min: 0,    max: 1000, decimals: 2 },
   { key: 'ntc/temperature', label: 'NTC Temp',        unit: '°C',     min: -10,  max: 60,   decimals: 1 },
-  { key: 'ntc/voltage',     label: 'NTC Voltage',     unit: 'mV',     min: 0,    max: 5000, decimals: 0 },
 ];
 
 // ─── ANSI helpers ─────────────────────────────────────────────────────────────

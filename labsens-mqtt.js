@@ -41,8 +41,7 @@ const SENSORS = [
 ];
 
 const NTC_SENSORS = [
-  { register: 34, name: 'ntc_temperature', unit: '°C', topic: 'temperature' },
-  { register: 35, name: 'ntc_voltage', unit: 'mV', topic: 'voltage' }
+  { register: 34, name: 'ntc_temperature', unit: '°C', topic: 'temperature' }
 ];
 
 // Main bridge class
@@ -143,8 +142,8 @@ class LabSensorsBridge {
 
   async readNtcData() {
     try {
-      console.log('[DEBUG] Attempting to read Modbus registers 34-35 (NTC)...');
-      const readPromise = this.readRegistersWithFallback(34, 2, 'NTC block 34-35');
+      console.log('[DEBUG] Attempting to read Modbus register 34 (NTC temperature)...');
+      const readPromise = this.readRegistersWithFallback(34, 1, 'NTC block 34');
       const response = await Promise.race([
         readPromise,
         new Promise((_, reject) =>
@@ -156,8 +155,7 @@ class LabSensorsBridge {
       console.log('[DEBUG] Raw NTC registers:', registers);
 
       const ntcValues = {
-        ntc_temperature: registers[0] / 10,
-        ntc_voltage: registers[1]
+        ntc_temperature: registers[0] / 10
       };
       console.log('[DEBUG] Parsed NTC values:', ntcValues);
       return ntcValues;
