@@ -62,6 +62,7 @@ class LabSensorsBridge {
       password: config.influxdb.password
     });
     this.isRunning = false;
+    this.isPolling = false;
   }
 
   async connect() {
@@ -72,6 +73,7 @@ class LabSensorsBridge {
         { baudRate: this.config.modbus.baudRate }
       );
       this.modbusClient.setID(this.config.modbus.address);
+      this.modbusClient.setTimeout(4000);
       console.log('[✓] Modbus connected');
     } catch (error) {
       console.error('[ERROR] Modbus connection failed:', error.message);
@@ -140,7 +142,15 @@ class LabSensorsBridge {
 
   async readNtcData() {
     try {
-      const response = await this.modbusClient.readHoldingRegisters(34, 2);
+      console.log('[DEBUG] Attempting to read Modbus registers 34-35 (NTC)...');
+      const readPromise = this.modbusClient.readHoldingRegisters(34, 2);
+      const response = await Promise.race([
+        readPromise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Modbus NTC read timeout after 5s')), 5000)
+        )
+      ]);
+
       const registers = response.data;
       console.log('[DEBUG] Raw NTC registers:', registers);
 
@@ -236,27 +246,38 @@ class LabSensorsBridge {
   }
 
   async poll() {
-    console.log('[POLL] Reading sensor data...');
-    
-    const [sensorValues, ntcValues] = await Promise.all([
-      this.readSensorData(),
-      this.readNtcData()
-    ]);
-
-    if (!sensorValues || !ntcValues) {
-      console.log('[POLL] Skipping update due to read error');
+    if (this.isPolling) {
+      console.log('[POLL] Previous cycle still running, skipping this tick');
       return;
     }
 
-    console.log('[DATA]', { ...sensorValues, ...ntcValues });
+    this.isPolling = true;
+    console.log('[POLL] Reading sensor data...');
 
-    // Publish to MQTT and save both datasets to InfluxDB in parallel
-    await Promise.all([
-      this.publishToMQTT(sensorValues),
-      this.publishNtcToMQTT(ntcValues),
-      this.saveToInfluxDB(sensorValues),
-      this.saveNtcToInfluxDB(ntcValues)
-    ]);
+    try {
+      // Modbus client should be used sequentially to avoid request collisions.
+      const sensorValues = await this.readSensorData();
+      const ntcValues = await this.readNtcData();
+
+      if (!sensorValues || !ntcValues) {
+        console.log('[POLL] Skipping update due to read error (will retry next tick)');
+        return;
+      }
+
+      console.log('[DATA]', { ...sensorValues, ...ntcValues });
+
+      // Publish and persistence can remain parallel.
+      await Promise.all([
+        this.publishToMQTT(sensorValues),
+        this.publishNtcToMQTT(ntcValues),
+        this.saveToInfluxDB(sensorValues),
+        this.saveNtcToInfluxDB(ntcValues)
+      ]);
+    } catch (error) {
+      console.error('[ERROR] Poll cycle failed:', error.message);
+    } finally {
+      this.isPolling = false;
+    }
   }
 
   async start() {
