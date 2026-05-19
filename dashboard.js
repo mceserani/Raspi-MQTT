@@ -1,7 +1,9 @@
 import mqtt from 'mqtt';
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const BROKER   = 'mqtt://localhost:1883';
+const BROKER   = process.env.MQTT_BROKER ?? 'mqtt://localhost:1883';
+const MQTT_USERNAME = process.env.MQTT_USERNAME;
+const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 const BASE_TOPIC = 'sensors/lab/#';
 
 // Sensor display definitions (order = display order)
@@ -134,6 +136,8 @@ const client = mqtt.connect(BROKER, {
   clientId: `lab-dashboard-${Math.random().toString(16).slice(2, 8)}`,
   clean: true,
   reconnectPeriod: 3000,
+  username: MQTT_USERNAME,
+  password: MQTT_PASSWORD,
 });
 
 client.on('connect', () => {

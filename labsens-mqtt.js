@@ -3,6 +3,10 @@ import mqtt from 'mqtt';
 import pkg from 'influx';
 const { InfluxDB } = pkg;
 
+const MQTT_BROKER = process.env.MQTT_BROKER ?? 'mqtt://localhost:1883';
+const MQTT_USERNAME = process.env.MQTT_USERNAME;
+const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
+
 // Configuration
 const CONFIG = {
   // Modbus settings
@@ -15,7 +19,9 @@ const CONFIG = {
   },
   // MQTT settings
   mqtt: {
-    broker: 'mqtt://localhost:1883',
+    broker: MQTT_BROKER,
+    username: MQTT_USERNAME,
+    password: MQTT_PASSWORD,
     baseTopic: 'sensors/lab'
   },
   // InfluxDB settings
@@ -81,7 +87,10 @@ class LabSensorsBridge {
 
     console.log('[INFO] Connecting to MQTT broker...');
     try {
-      this.mqttClient = await mqtt.connectAsync(this.config.mqtt.broker);
+      this.mqttClient = await mqtt.connectAsync(this.config.mqtt.broker, {
+        username: this.config.mqtt.username,
+        password: this.config.mqtt.password
+      });
       this.mqttClient.on('error', (err) => {
         console.error('[ERROR] MQTT error:', err.message);
       });
