@@ -109,9 +109,10 @@ class LabSensorsBridge {
   async readSensorData() {
     try {
       console.log('[DEBUG] Attempting to read Modbus registers 64-69...');
-      const readPromise = this.modbusClient.readHoldingRegisters(
+      const readPromise = this.readRegistersWithFallback(
         this.config.modbus.startRegister,
-        this.config.modbus.registerCount
+        this.config.modbus.registerCount,
+        'sensor block 64-69'
       );
       
       // Add 5-second timeout to prevent infinite hanging
@@ -143,7 +144,7 @@ class LabSensorsBridge {
   async readNtcData() {
     try {
       console.log('[DEBUG] Attempting to read Modbus registers 34-35 (NTC)...');
-      const readPromise = this.modbusClient.readHoldingRegisters(34, 2);
+      const readPromise = this.readRegistersWithFallback(34, 2, 'NTC block 34-35');
       const response = await Promise.race([
         readPromise,
         new Promise((_, reject) =>
@@ -164,6 +165,19 @@ class LabSensorsBridge {
       console.error('[ERROR] Failed to read NTC Modbus registers:', error.message);
       console.error('[DEBUG] Stack:', error.stack);
       return null;
+    }
+  }
+
+  async readRegistersWithFallback(startRegister, count, label) {
+    try {
+      const response = await this.modbusClient.readHoldingRegisters(startRegister, count);
+      console.log(`[DEBUG] ${label}: readHoldingRegisters OK`);
+      return response;
+    } catch (holdingError) {
+      console.warn(`[WARN] ${label}: readHoldingRegisters failed (${holdingError.message}), trying readInputRegisters...`);
+      const response = await this.modbusClient.readInputRegisters(startRegister, count);
+      console.log(`[DEBUG] ${label}: readInputRegisters OK`);
+      return response;
     }
   }
 
