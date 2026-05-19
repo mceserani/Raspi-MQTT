@@ -4,6 +4,7 @@
   "main": "labsens-mqtt.js",
   "scripts": {
     "start": "node labsens-mqtt.js",
+    "dashboard": "node dashboard.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Matteo Ceserani",

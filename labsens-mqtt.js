@@ -39,7 +39,16 @@ const SENSORS = [
   { register: 69, name: 'nox', unit: 'ppb', topic: 'nox' }
 ];
 
+const NTC_SENSORS = [
+  { register: 34, name: 'ntc_temperature', unit: '°C', topic: 'temperature' },
+  { register: 35, name: 'ntc_voltage', unit: 'mV', topic: 'voltage' }
+];
+
+// Main bridge class
+// This class encapsulates all functionality for connecting to Modbus, MQTT, and InfluxDB,
+// as well as reading sensor data, publishing to MQTT, and saving to InfluxDB.
 class LabSensorsBridge {
+  
   constructor(config) {
     this.config = config;
     this.modbusClient = new ModbusRTU();
@@ -96,20 +105,36 @@ class LabSensorsBridge {
 
   async readSensorData() {
     try {
-      const data = await this.modbusClient.readHoldingRegisters(
+      const response = await this.modbusClient.readHoldingRegisters(
         this.config.modbus.startRegister,
         this.config.modbus.registerCount
       );
+      const registers = response.data;
 
       const sensorValues = {};
       SENSORS.forEach((sensor, index) => {
         // Assuming values are stored as integers or need conversion
-        sensorValues[sensor.name] = data[index] / 100; // Divide by 100 for decimal values
+        sensorValues[sensor.name] = registers[index] / 100; // Divide by 100 for decimal values
       });
 
       return sensorValues;
     } catch (error) {
       console.error('[ERROR] Failed to read Modbus registers:', error.message);
+      return null;
+    }
+  }
+
+  async readNtcData() {
+    try {
+      const response = await this.modbusClient.readHoldingRegisters(34, 2);
+      const registers = response.data;
+
+      return {
+        ntc_temperature: registers[0] / 10,
+        ntc_voltage: registers[1]
+      };
+    } catch (error) {
+      console.error('[ERROR] Failed to read NTC Modbus registers:', error.message);
       return null;
     }
   }
@@ -134,6 +159,26 @@ class LabSensorsBridge {
     }
   }
 
+  async publishNtcToMQTT(ntcValues) {
+    try {
+      for (const sensor of NTC_SENSORS) {
+        const topic = `${this.config.mqtt.baseTopic}/ntc/${sensor.topic}`;
+        const value = ntcValues[sensor.name];
+
+        await this.mqttClient.publish(topic, JSON.stringify({
+          value: value,
+          unit: sensor.unit,
+          timestamp: new Date().toISOString(),
+          sensor: sensor.name
+        }));
+
+        console.log(`[MQTT] Published ${sensor.name}: ${value} ${sensor.unit}`);
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to publish NTC data to MQTT:', error.message);
+    }
+  }
+
   async saveToInfluxDB(sensorValues) {
     try {
       const points = SENSORS.map(sensor => 
@@ -151,21 +196,44 @@ class LabSensorsBridge {
     }
   }
 
+  async saveNtcToInfluxDB(ntcValues) {
+    try {
+      const points = NTC_SENSORS.map(sensor =>
+        new Point('ntc_readings')
+          .tag('sensor_type', sensor.name)
+          .tag('location', 'lab')
+          .floatField('value', ntcValues[sensor.name])
+          .timestamp(Date.now())
+      );
+
+      await this.influxClient.writePoints(points);
+      console.log(`[InfluxDB] Saved ${NTC_SENSORS.length} NTC data points`);
+    } catch (error) {
+      console.error('[ERROR] Failed to save NTC data to InfluxDB:', error.message);
+    }
+  }
+
   async poll() {
     console.log('[POLL] Reading sensor data...');
     
-    const sensorValues = await this.readSensorData();
-    if (!sensorValues) {
+    const [sensorValues, ntcValues] = await Promise.all([
+      this.readSensorData(),
+      this.readNtcData()
+    ]);
+
+    if (!sensorValues || !ntcValues) {
       console.log('[POLL] Skipping update due to read error');
       return;
     }
 
-    console.log('[DATA]', sensorValues);
+    console.log('[DATA]', { ...sensorValues, ...ntcValues });
 
-    // Publish to MQTT and save to InfluxDB in parallel
+    // Publish to MQTT and save both datasets to InfluxDB in parallel
     await Promise.all([
       this.publishToMQTT(sensorValues),
-      this.saveToInfluxDB(sensorValues)
+      this.publishNtcToMQTT(ntcValues),
+      this.saveToInfluxDB(sensorValues),
+      this.saveNtcToInfluxDB(ntcValues)
     ]);
   }
 
