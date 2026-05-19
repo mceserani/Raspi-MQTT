@@ -1,6 +1,7 @@
 import ModbusRTU from 'modbus-serial';
 import mqtt from 'mqtt';
-import { InfluxDB, Point } from 'influx';
+import pkg from 'influx';
+const { InfluxDB, Point } = pkg;
 
 // Configuration
 const CONFIG = {
@@ -48,7 +49,7 @@ const NTC_SENSORS = [
 // This class encapsulates all functionality for connecting to Modbus, MQTT, and InfluxDB,
 // as well as reading sensor data, publishing to MQTT, and saving to InfluxDB.
 class LabSensorsBridge {
-  
+
   constructor(config) {
     this.config = config;
     this.modbusClient = new ModbusRTU();
