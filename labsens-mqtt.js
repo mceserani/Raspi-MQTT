@@ -111,6 +111,7 @@ class LabSensorsBridge {
         this.config.modbus.registerCount
       );
       const registers = response.data;
+      console.log('[DEBUG] Raw Modbus registers:', registers);
 
       const sensorValues = {};
       SENSORS.forEach((sensor, index) => {
@@ -118,9 +119,11 @@ class LabSensorsBridge {
         sensorValues[sensor.name] = registers[index] / 100; // Divide by 100 for decimal values
       });
 
+      console.log('[DEBUG] Parsed sensor values:', sensorValues);
       return sensorValues;
     } catch (error) {
       console.error('[ERROR] Failed to read Modbus registers:', error.message);
+      console.error('[DEBUG] Stack:', error.stack);
       return null;
     }
   }
@@ -129,13 +132,17 @@ class LabSensorsBridge {
     try {
       const response = await this.modbusClient.readHoldingRegisters(34, 2);
       const registers = response.data;
+      console.log('[DEBUG] Raw NTC registers:', registers);
 
-      return {
+      const ntcValues = {
         ntc_temperature: registers[0] / 10,
         ntc_voltage: registers[1]
       };
+      console.log('[DEBUG] Parsed NTC values:', ntcValues);
+      return ntcValues;
     } catch (error) {
       console.error('[ERROR] Failed to read NTC Modbus registers:', error.message);
+      console.error('[DEBUG] Stack:', error.stack);
       return null;
     }
   }
@@ -190,10 +197,12 @@ class LabSensorsBridge {
           .timestamp(Date.now())
       );
 
+      console.log('[DEBUG] Writing points to InfluxDB:', points.length);
       await this.influxClient.writePoints(points);
       console.log(`[InfluxDB] Saved ${SENSORS.length} data points`);
     } catch (error) {
       console.error('[ERROR] Failed to save to InfluxDB:', error.message);
+      console.error('[DEBUG] Stack:', error.stack);
     }
   }
 
@@ -207,10 +216,12 @@ class LabSensorsBridge {
           .timestamp(Date.now())
       );
 
+      console.log('[DEBUG] Writing NTC points to InfluxDB:', points.length);
       await this.influxClient.writePoints(points);
       console.log(`[InfluxDB] Saved ${NTC_SENSORS.length} NTC data points`);
     } catch (error) {
       console.error('[ERROR] Failed to save NTC data to InfluxDB:', error.message);
+      console.error('[DEBUG] Stack:', error.stack);
     }
   }
 
