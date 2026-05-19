@@ -1,7 +1,7 @@
 import ModbusRTU from 'modbus-serial';
 import mqtt from 'mqtt';
 import pkg from 'influx';
-const { InfluxDB, Point } = pkg;
+const { InfluxDB } = pkg;
 
 // Configuration
 const CONFIG = {
@@ -221,13 +221,12 @@ class LabSensorsBridge {
 
   async saveToInfluxDB(sensorValues) {
     try {
-      const points = SENSORS.map(sensor => 
-        new Point('sensor_readings')
-          .tag('sensor_type', sensor.name)
-          .tag('location', 'lab')
-          .floatField('value', sensorValues[sensor.name])
-          .timestamp(Date.now())
-      );
+      const points = SENSORS.map(sensor => ({
+        measurement: 'sensor_readings',
+        tags: { sensor_type: sensor.name, location: 'lab' },
+        fields: { value: sensorValues[sensor.name] },
+        timestamp: new Date()
+      }));
 
       console.log('[DEBUG] Writing points to InfluxDB:', points.length);
       await this.influxClient.writePoints(points);
@@ -240,13 +239,12 @@ class LabSensorsBridge {
 
   async saveNtcToInfluxDB(ntcValues) {
     try {
-      const points = NTC_SENSORS.map(sensor =>
-        new Point('ntc_readings')
-          .tag('sensor_type', sensor.name)
-          .tag('location', 'lab')
-          .floatField('value', ntcValues[sensor.name])
-          .timestamp(Date.now())
-      );
+      const points = NTC_SENSORS.map(sensor => ({
+        measurement: 'ntc_readings',
+        tags: { sensor_type: sensor.name, location: 'lab' },
+        fields: { value: ntcValues[sensor.name] },
+        timestamp: new Date()
+      }));
 
       console.log('[DEBUG] Writing NTC points to InfluxDB:', points.length);
       await this.influxClient.writePoints(points);
