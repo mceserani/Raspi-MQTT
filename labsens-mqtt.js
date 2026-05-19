@@ -8,7 +8,7 @@ const CONFIG = {
   // Modbus settings
   modbus: {
     port: '/dev/ttyUSB0',
-    baudRate: 9600,
+    baudRate: 115200,
     address: 29,
     startRegister: 64,
     registerCount: 6
