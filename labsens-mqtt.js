@@ -106,10 +106,20 @@ class LabSensorsBridge {
 
   async readSensorData() {
     try {
-      const response = await this.modbusClient.readHoldingRegisters(
+      console.log('[DEBUG] Attempting to read Modbus registers 64-69...');
+      const readPromise = this.modbusClient.readHoldingRegisters(
         this.config.modbus.startRegister,
         this.config.modbus.registerCount
       );
+      
+      // Add 5-second timeout to prevent infinite hanging
+      const response = await Promise.race([
+        readPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Modbus read timeout after 5s')), 5000)
+        )
+      ]);
+      
       const registers = response.data;
       console.log('[DEBUG] Raw Modbus registers:', registers);
 
@@ -120,7 +130,17 @@ class LabSensorsBridge {
       });
 
       console.log('[DEBUG] Parsed sensor values:', sensorValues);
-      return sensorValues;
+      retuole.log('[DEBUG] Attempting to read Modbus registers 34-35 (NTC)...');
+      const readPromise = this.modbusClient.readHoldingRegisters(34, 2);
+      
+      // Add 5-second timeout to prevent infinite hanging
+      const response = await Promise.race([
+        readPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Modbus NTC read timeout after 5s')), 5000)
+        )
+      ]);
+      
     } catch (error) {
       console.error('[ERROR] Failed to read Modbus registers:', error.message);
       console.error('[DEBUG] Stack:', error.stack);
