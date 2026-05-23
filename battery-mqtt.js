@@ -19,7 +19,7 @@ function parseNumber(value, fallback) {
 
 const CONFIG = {
 	modbus: {
-		port: process.env.BATTERY_MODBUS_PORT ?? '/dev/ttyUSB0',
+		port: process.env.BATTERY_MODBUS_PORT ?? '/dev/ttyUSB1',
 		baudRate: parseNumber(process.env.BATTERY_BAUD_RATE, 115200),
 		address: parseNumber(process.env.BATTERY_MODBUS_ADDRESS, 4),
 		timeout: parseNumber(process.env.BATTERY_MODBUS_TIMEOUT, 1000)
