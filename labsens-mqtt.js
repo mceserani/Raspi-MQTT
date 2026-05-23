@@ -33,7 +33,7 @@ const CONFIG = {
     password: 'influxdb'
   },
   // Polling interval (milliseconds)
-  pollInterval: 5000
+  pollInterval: 1000
 };
 
 // Sensor data mapping
@@ -47,7 +47,7 @@ const SENSORS = [
 ];
 
 const NTC_SENSORS = [
-  { register: 34, name: 'ntc_temperature', unit: '°C', topic: 'temperature' }
+  { register: 34, name: 'ntc_temperature', unit: '°C', topic: 'battery_temperature' }
 ];
 
 // Main bridge class
