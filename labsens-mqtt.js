@@ -47,7 +47,7 @@ const SENSORS = [
 ];
 
 const NTC_SENSORS = [
-  { register: 34, name: 'ntc_temperature', unit: '°C', topic: 'battery_temperature' }
+  { register: 34, name: 'ntc_temperature', unit: '°C', topic: 'temperature' }
 ];
 
 // Main bridge class
