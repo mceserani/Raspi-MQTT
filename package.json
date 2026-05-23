@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "main": "labsens-mqtt.js",
   "scripts": {
-    "start": "node labsens-mqtt.js",
-    "dashboard": "node dashboard.js",
+    "start": "node --env-file=.env labsens-mqtt.js",
+    "battery": "node --env-file=.env battery-mqtt.js",
+    "dashboard": "node --env-file=.env dashboard.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Matteo Ceserani",
