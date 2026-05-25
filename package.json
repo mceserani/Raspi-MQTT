@@ -5,6 +5,8 @@
   "scripts": {
     "start": "node --env-file=.env labsens-mqtt.js",
     "battery": "node --env-file=.env battery-mqtt.js",
+    "battery-cmd-bridge": "node --env-file=.env battery-cmd-bridge.js",
+    "battery-remote": "node --env-file=.env battery-remote-dashboard.js",
     "dashboard": "node --env-file=.env dashboard.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

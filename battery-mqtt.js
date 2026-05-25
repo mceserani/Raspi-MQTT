@@ -53,8 +53,27 @@ const REGISTER_MAP = {
 	batteryType: 405
 };
 
+const COMMAND_TOPICS = {
+	request: 'command/request',
+	dispatch: 'command/dispatch',
+	ack: 'command/ack'
+};
+
 function toSigned16(value) {
 	return value > 0x7fff ? value - 0x10000 : value;
+}
+
+function toUnsigned16(value) {
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed) || parsed < -32768 || parsed > 65535) {
+		throw new Error(`Value out of 16-bit range: ${value}`);
+	}
+
+	if (parsed < 0) {
+		return 0x10000 + parsed;
+	}
+
+	return parsed;
 }
 
 function decodeBaudRate(rawValue) {
@@ -100,6 +119,24 @@ class BatteryBridge {
 		this.isPolling = false;
 		this.isRunning = false;
 		this.pollTimer = null;
+		this.modbusQueue = Promise.resolve();
+	}
+
+	async withModbusLock(action, operation) {
+		const run = async () => {
+			try {
+				return await operation();
+			} catch (error) {
+				error.message = `[${action}] ${error.message}`;
+				throw error;
+			}
+		};
+
+		const task = this.modbusQueue.then(run, run);
+		this.modbusQueue = task.catch(() => {
+			// Keep queue alive after failures.
+		});
+		return task;
 	}
 
 	async connect() {
@@ -120,6 +157,9 @@ class BatteryBridge {
 		this.mqttClient.on('error', (error) => {
 			console.error('[ERROR] MQTT error:', error.message);
 		});
+		this.mqttClient.on('message', async (topic, payloadBuffer) => {
+			await this.handleMqttMessage(topic, payloadBuffer);
+		});
 		console.log('[✓] MQTT connected');
 
 		console.log('[INFO] Testing InfluxDB connection...');
@@ -131,17 +171,25 @@ class BatteryBridge {
 		console.log('[✓] InfluxDB connected');
 	}
 
+	async subscribeCommandTopics() {
+		const dispatchTopic = `${this.config.mqtt.baseTopic}/${COMMAND_TOPICS.dispatch}`;
+		await this.mqttClient.subscribe(dispatchTopic, { qos: 1 });
+		console.log(`[INFO] Subscribed to command topic: ${dispatchTopic}`);
+	}
+
 	async readRegistersWithFallback(startRegister, count, label) {
-		try {
-			const response = await this.modbusClient.readHoldingRegisters(startRegister, count);
-			console.log(`[DEBUG] ${label}: readHoldingRegisters OK`);
-			return response;
-		} catch (holdingError) {
-			console.warn(`[WARN] ${label}: readHoldingRegisters failed (${holdingError.message}), trying readInputRegisters...`);
-			const response = await this.modbusClient.readInputRegisters(startRegister, count);
-			console.log(`[DEBUG] ${label}: readInputRegisters OK`);
-			return response;
-		}
+		return this.withModbusLock(`read-${label}`, async () => {
+			try {
+				const response = await this.modbusClient.readHoldingRegisters(startRegister, count);
+				console.log(`[DEBUG] ${label}: readHoldingRegisters OK`);
+				return response;
+			} catch (holdingError) {
+				console.warn(`[WARN] ${label}: readHoldingRegisters failed (${holdingError.message}), trying readInputRegisters...`);
+				const response = await this.modbusClient.readInputRegisters(startRegister, count);
+				console.log(`[DEBUG] ${label}: readInputRegisters OK`);
+				return response;
+			}
+		});
 	}
 
 	async readSingleRegister(register, label) {
@@ -269,6 +317,142 @@ class BatteryBridge {
 		console.log('[InfluxDB] Saved battery_controller point');
 	}
 
+	async writeSingleRegister(register, value) {
+		const unsignedValue = toUnsigned16(value);
+		await this.withModbusLock(`write-reg-${register}`, async () => {
+			await this.modbusClient.writeRegister(register, unsignedValue);
+		});
+	}
+
+	async publishCommandAck(payload) {
+		await this.mqttClient.publish(
+			`${this.config.mqtt.baseTopic}/${COMMAND_TOPICS.ack}`,
+			JSON.stringify(payload),
+			{ qos: 1, retain: false }
+		);
+	}
+
+	decodeCommand(commandPayload) {
+		if (!commandPayload || typeof commandPayload !== 'object') {
+			throw new Error('Command payload must be an object');
+		}
+
+		const { command, value, register } = commandPayload;
+		if (!command || typeof command !== 'string') {
+			throw new Error('Command name is required');
+		}
+
+		if (command === 'set_current_ma') {
+			if (!Number.isInteger(Number(value))) {
+				throw new Error('set_current_ma requires integer value');
+			}
+			return {
+				label: 'set_current_ma',
+				register: REGISTER_MAP.currentSetpoint,
+				value: Number(value)
+			};
+		}
+
+		if (command === 'set_voltage_mv') {
+			if (!Number.isInteger(Number(value))) {
+				throw new Error('set_voltage_mv requires integer value');
+			}
+			return {
+				label: 'set_voltage_mv',
+				register: REGISTER_MAP.voltageSetpoint,
+				value: Number(value)
+			};
+		}
+
+		if (command === 'set_run_state') {
+			const runState = Number(value);
+			if (!Number.isInteger(runState) || ![0, 1, 2].includes(runState)) {
+				throw new Error('set_run_state supports only 0, 1 or 2');
+			}
+
+			return {
+				label: 'set_run_state',
+				register: REGISTER_MAP.runState,
+				value: runState
+			};
+		}
+
+		if (command === 'write_register') {
+			const targetRegister = Number(register);
+			const targetValue = Number(value);
+			if (!Number.isInteger(targetRegister) || !Number.isInteger(targetValue)) {
+				throw new Error('write_register requires integer register and value');
+			}
+
+			return {
+				label: 'write_register',
+				register: targetRegister,
+				value: targetValue
+			};
+		}
+
+		throw new Error(`Unsupported command: ${command}`);
+	}
+
+	async handleCommand(commandPayload) {
+		const commandId = commandPayload?.commandId;
+		const command = commandPayload?.command;
+
+		try {
+			const decoded = this.decodeCommand(commandPayload);
+			await this.writeSingleRegister(decoded.register, decoded.value);
+			const refreshedState = await this.readBatteryState();
+			await Promise.all([
+				this.publishBatteryState(refreshedState),
+				this.saveBatteryState(refreshedState),
+				this.publishCommandAck({
+					status: 'ok',
+					message: `${decoded.label} applied on register ${decoded.register}`,
+					command,
+					commandId,
+					register: decoded.register,
+					value: decoded.value,
+					timestamp: new Date().toISOString(),
+					handledBy: 'battery-mqtt'
+				})
+			]);
+			console.log(`[CMD] Applied ${decoded.label} (id=${commandId ?? 'n/a'})`);
+		} catch (error) {
+			console.error('[CMD ERROR]', error.message);
+			await this.publishCommandAck({
+				status: 'error',
+				message: error.message,
+				command,
+				commandId,
+				timestamp: new Date().toISOString(),
+				handledBy: 'battery-mqtt'
+			});
+		}
+	}
+
+	async handleMqttMessage(topic, payloadBuffer) {
+		const dispatchTopic = `${this.config.mqtt.baseTopic}/${COMMAND_TOPICS.dispatch}`;
+		if (topic !== dispatchTopic) {
+			return;
+		}
+
+		let payload;
+		try {
+			payload = JSON.parse(payloadBuffer.toString());
+		} catch (error) {
+			console.error('[CMD ERROR] Invalid JSON payload:', error.message);
+			await this.publishCommandAck({
+				status: 'error',
+				message: `Invalid JSON payload: ${error.message}`,
+				timestamp: new Date().toISOString(),
+				handledBy: 'battery-mqtt'
+			});
+			return;
+		}
+
+		await this.handleCommand(payload);
+	}
+
 	async poll() {
 		if (this.isPolling) {
 			console.log('[POLL] Previous cycle still running, skipping this tick');
@@ -293,6 +477,7 @@ class BatteryBridge {
 	async start() {
 		try {
 			await this.connect();
+			await this.subscribeCommandTopics();
 			this.controllerInfo = await this.readControllerInfo();
 			console.log('[INFO] Controller info:', this.controllerInfo);
 			await this.publishControllerInfo();
