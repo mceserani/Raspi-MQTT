@@ -37,6 +37,9 @@ const state = {
 	messageCount: 0
 };
 
+let rl = null;
+let renderPending = false;
+
 function randomId() {
 	return `${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
 }
@@ -121,7 +124,21 @@ function render() {
 	lines.push('  help              -> print command help');
 	lines.push('  quit              -> exit dashboard');
 
-	process.stdout.write(ansi.clear + lines.join('\n') + '\ncmd> ');
+	process.stdout.write(ansi.clear + lines.join('\n') + '\n');
+	if (rl) {
+		rl.setPrompt('cmd> ');
+		rl.prompt(true);
+	}
+}
+
+function safeRender() {
+	if (rl && typeof rl.line === 'string' && rl.line.length > 0) {
+		renderPending = true;
+		return;
+	}
+
+	renderPending = false;
+	render();
 }
 
 function parseInteger(value) {
@@ -219,24 +236,24 @@ client.on('connect', () => {
 		if (error) {
 			console.error('[ERROR] Subscribe failed:', error.message);
 		}
-		render();
+		safeRender();
 	});
 });
 
 client.on('reconnect', () => {
 	state.connected = false;
-	render();
+	safeRender();
 });
 
 client.on('offline', () => {
 	state.connected = false;
-	render();
+	safeRender();
 });
 
 client.on('error', (error) => {
 	state.connected = false;
 	console.error('[ERROR] MQTT:', error.message);
-	render();
+	safeRender();
 });
 
 client.on('message', (topic, payloadBuffer) => {
@@ -264,10 +281,10 @@ client.on('message', (topic, payloadBuffer) => {
 		console.error('[WARN] Invalid JSON payload on topic', topic, error.message);
 	}
 
-	render();
+	safeRender();
 });
 
-const rl = readline.createInterface({
+rl = readline.createInterface({
 	input: process.stdin,
 	output: process.stdout,
 	terminal: true
@@ -276,20 +293,20 @@ const rl = readline.createInterface({
 rl.on('line', async (line) => {
 	const text = line.trim();
 	if (!text) {
-		render();
+		safeRender();
 		return;
 	}
 
 	try {
 		const payload = buildCommandPayload(text);
 		if (!payload) {
-			render();
+			safeRender();
 			return;
 		}
 
 		if (payload.local === 'help') {
 			printHelp();
-			render();
+			safeRender();
 			return;
 		}
 
@@ -313,7 +330,10 @@ rl.on('line', async (line) => {
 		console.error('[CMD ERROR]', error.message);
 	}
 
-	render();
+	if (renderPending) {
+		renderPending = false;
+	}
+	safeRender();
 });
 
 function shutdown() {
