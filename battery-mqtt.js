@@ -31,8 +31,8 @@ const CONFIG = {
 	mariadb: {
 		host: process.env.MARIADB_HOST ?? 'localhost',
 		port: parseNumber(process.env.MARIADB_PORT, 3306),
-		user: process.env.MARIADB_USER ?? 'root',
-		password: process.env.MARIADB_PASSWORD ?? '',
+		user: process.env.MARIADB_USER ?? 'mceserani',
+		password: process.env.MARIADB_PASSWORD ?? '*Pippo123',
 		database: process.env.MARIADB_DATABASE ?? 'sensor_data',
 		table: process.env.BATTERY_DB_TABLE ?? 'battery_measurements'
 	},

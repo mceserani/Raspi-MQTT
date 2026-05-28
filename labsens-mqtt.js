@@ -7,8 +7,8 @@ const MQTT_USERNAME = process.env.MQTT_USERNAME;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 const MARIADB_HOST = process.env.MARIADB_HOST ?? 'localhost';
 const MARIADB_PORT = Number(process.env.MARIADB_PORT ?? 3306);
-const MARIADB_USER = process.env.MARIADB_USER ?? 'root';
-const MARIADB_PASSWORD = process.env.MARIADB_PASSWORD ?? '';
+const MARIADB_USER = process.env.MARIADB_USER ?? 'mceserani';
+const MARIADB_PASSWORD = process.env.MARIADB_PASSWORD ?? '*Pippo123';
 const MARIADB_DATABASE = process.env.MARIADB_DATABASE ?? 'sensor_data';
 
 // Configuration
