@@ -1,6 +1,6 @@
 import ModbusRTU from 'modbus-serial';
 import mqtt from 'mqtt';
-import mariadb from 'mariadb';
+import * as mariadb from 'mariadb';
 
 const MQTT_BROKER = process.env.MQTT_BROKER ?? 'mqtt://localhost:1883';
 const MQTT_USERNAME = process.env.MQTT_USERNAME;
