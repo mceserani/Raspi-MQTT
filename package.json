@@ -12,11 +12,11 @@
   },
   "author": "Matteo Ceserani",
   "license": "MIT",
-  "description": "MQTT publisher for Modbus sensors with InfluxDB storage",
+  "description": "MQTT publisher for Modbus sensors with MariaDB storage",
   "type": "module",
   "dependencies": {
     "modbus-serial": "^8.0.0",
     "mqtt": "^5.3.0",
-    "influx": "^5.9.0"
+    "mariadb": "^3.4.2"
   }
 }

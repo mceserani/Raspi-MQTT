@@ -1,11 +1,15 @@
 import ModbusRTU from 'modbus-serial';
 import mqtt from 'mqtt';
-import pkg from 'influx';
-const { InfluxDB } = pkg;
+import mariadb from 'mariadb';
 
 const MQTT_BROKER = process.env.MQTT_BROKER ?? 'mqtt://localhost:1883';
 const MQTT_USERNAME = process.env.MQTT_USERNAME;
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
+const MARIADB_HOST = process.env.MARIADB_HOST ?? 'localhost';
+const MARIADB_PORT = Number(process.env.MARIADB_PORT ?? 3306);
+const MARIADB_USER = process.env.MARIADB_USER ?? 'root';
+const MARIADB_PASSWORD = process.env.MARIADB_PASSWORD ?? '';
+const MARIADB_DATABASE = process.env.MARIADB_DATABASE ?? 'sensor_data';
 
 // Configuration
 const CONFIG = {
@@ -24,13 +28,14 @@ const CONFIG = {
     password: MQTT_PASSWORD,
     baseTopic: 'sensors/lab'
   },
-  // InfluxDB settings
-  influxdb: {
-    host: 'localhost',
-    port: 8086,
-    database: 'sensor_data',
-    username: 'influxdb',
-    password: 'influxdb'
+  // MariaDB settings
+  mariadb: {
+    host: MARIADB_HOST,
+    port: MARIADB_PORT,
+    user: MARIADB_USER,
+    password: MARIADB_PASSWORD,
+    database: MARIADB_DATABASE,
+    table: process.env.LABSENS_DB_TABLE ?? 'labsens_measurements'
   },
   // Polling interval (milliseconds)
   pollInterval: 1000
@@ -51,23 +56,62 @@ const NTC_SENSORS = [
 ];
 
 // Main bridge class
-// This class encapsulates all functionality for connecting to Modbus, MQTT, and InfluxDB,
-// as well as reading sensor data, publishing to MQTT, and saving to InfluxDB.
+// This class encapsulates all functionality for connecting to Modbus, MQTT, and MariaDB,
+// as well as reading sensor data, publishing to MQTT, and saving to MariaDB.
 class LabSensorsBridge {
 
   constructor(config) {
     this.config = config;
     this.modbusClient = new ModbusRTU();
     this.mqttClient = null;
-    this.influxClient = new InfluxDB({
-      host: config.influxdb.host,
-      port: config.influxdb.port,
-      database: config.influxdb.database,
-      username: config.influxdb.username,
-      password: config.influxdb.password
-    });
+    this.dbPool = null;
     this.isRunning = false;
     this.isPolling = false;
+  }
+
+  async setupDatabase() {
+    let adminConnection;
+    try {
+      adminConnection = await mariadb.createConnection({
+        host: this.config.mariadb.host,
+        port: this.config.mariadb.port,
+        user: this.config.mariadb.user,
+        password: this.config.mariadb.password
+      });
+
+      await adminConnection.query(
+        `CREATE DATABASE IF NOT EXISTS ${this.config.mariadb.database}`
+      );
+    } finally {
+      if (adminConnection) {
+        await adminConnection.end();
+      }
+    }
+
+    this.dbPool = mariadb.createPool({
+      host: this.config.mariadb.host,
+      port: this.config.mariadb.port,
+      user: this.config.mariadb.user,
+      password: this.config.mariadb.password,
+      database: this.config.mariadb.database,
+      connectionLimit: 5
+    });
+
+    await this.dbPool.query(`
+      CREATE TABLE IF NOT EXISTS ${this.config.mariadb.table} (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        recorded_at DATETIME(3) NOT NULL,
+        temperature DOUBLE,
+        humidity DOUBLE,
+        pm10 DOUBLE,
+        pm2_5 DOUBLE,
+        voc DOUBLE,
+        nox DOUBLE,
+        ntc_temperature DOUBLE,
+        PRIMARY KEY (id),
+        INDEX idx_recorded_at (recorded_at)
+      )
+    `);
   }
 
   async connect() {
@@ -100,16 +144,12 @@ class LabSensorsBridge {
       throw error;
     }
 
-    console.log('[INFO] Testing InfluxDB connection...');
+    console.log('[INFO] Connecting to MariaDB...');
     try {
-      const dbs = await this.influxClient.getDatabaseNames();
-      if (!dbs.includes(this.config.influxdb.database)) {
-        console.log(`[INFO] Creating InfluxDB database: ${this.config.influxdb.database}`);
-        await this.influxClient.createDatabase(this.config.influxdb.database);
-      }
-      console.log('[✓] InfluxDB connected');
+      await this.setupDatabase();
+      console.log('[✓] MariaDB connected');
     } catch (error) {
-      console.error('[ERROR] InfluxDB connection failed:', error.message);
+      console.error('[ERROR] MariaDB connection failed:', error.message);
       throw error;
     }
   }
@@ -228,38 +268,26 @@ class LabSensorsBridge {
     }
   }
 
-  async saveToInfluxDB(sensorValues) {
+  async saveToMariaDB(sensorValues, ntcValues) {
     try {
-      const points = SENSORS.map(sensor => ({
-        measurement: 'sensor_readings',
-        tags: { sensor_type: sensor.name, location: 'lab' },
-        fields: { value: sensorValues[sensor.name] },
-        timestamp: new Date()
-      }));
-
-      console.log('[DEBUG] Writing points to InfluxDB:', points.length);
-      await this.influxClient.writePoints(points);
-      console.log(`[InfluxDB] Saved ${SENSORS.length} data points`);
+      const insertSql = `
+        INSERT INTO ${this.config.mariadb.table}
+        (recorded_at, temperature, humidity, pm10, pm2_5, voc, nox, ntc_temperature)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      await this.dbPool.query(insertSql, [
+        new Date(),
+        sensorValues.temperature,
+        sensorValues.humidity,
+        sensorValues.pm10,
+        sensorValues.pm2_5,
+        sensorValues.voc,
+        sensorValues.nox,
+        ntcValues.ntc_temperature
+      ]);
+      console.log(`[MariaDB] Saved row in ${this.config.mariadb.table}`);
     } catch (error) {
-      console.error('[ERROR] Failed to save to InfluxDB:', error.message);
-      console.error('[DEBUG] Stack:', error.stack);
-    }
-  }
-
-  async saveNtcToInfluxDB(ntcValues) {
-    try {
-      const points = NTC_SENSORS.map(sensor => ({
-        measurement: 'ntc_readings',
-        tags: { sensor_type: sensor.name, location: 'lab' },
-        fields: { value: ntcValues[sensor.name] },
-        timestamp: new Date()
-      }));
-
-      console.log('[DEBUG] Writing NTC points to InfluxDB:', points.length);
-      await this.influxClient.writePoints(points);
-      console.log(`[InfluxDB] Saved ${NTC_SENSORS.length} NTC data points`);
-    } catch (error) {
-      console.error('[ERROR] Failed to save NTC data to InfluxDB:', error.message);
+      console.error('[ERROR] Failed to save to MariaDB:', error.message);
       console.error('[DEBUG] Stack:', error.stack);
     }
   }
@@ -289,8 +317,7 @@ class LabSensorsBridge {
       await Promise.all([
         this.publishToMQTT(sensorValues),
         this.publishNtcToMQTT(ntcValues),
-        this.saveToInfluxDB(sensorValues),
-        this.saveNtcToInfluxDB(ntcValues)
+        this.saveToMariaDB(sensorValues, ntcValues)
       ]);
     } catch (error) {
       console.error('[ERROR] Poll cycle failed:', error.message);
@@ -338,6 +365,12 @@ class LabSensorsBridge {
       this.modbusClient.close(() => {
         console.log('[✓] Modbus closed');
       });
+    }
+
+    if (this.dbPool) {
+      await this.dbPool.end();
+      this.dbPool = null;
+      console.log('[✓] MariaDB closed');
     }
 
     console.log('[✓] Shutdown complete');

@@ -1,8 +1,6 @@
 import ModbusRTU from 'modbus-serial';
 import mqtt from 'mqtt';
-import pkg from 'influx';
-
-const { InfluxDB } = pkg;
+import mariadb from 'mariadb';
 
 const MQTT_BROKER = process.env.MQTT_BROKER ?? 'mqtt://localhost:1883';
 const MQTT_USERNAME = process.env.MQTT_USERNAME;
@@ -30,12 +28,13 @@ const CONFIG = {
 		password: MQTT_PASSWORD,
 		baseTopic: process.env.BATTERY_MQTT_TOPIC ?? 'sensors/battery'
 	},
-	influxdb: {
-		host: process.env.INFLUX_HOST ?? 'localhost',
-		port: parseNumber(process.env.INFLUX_PORT, 8086),
-		database: process.env.INFLUX_DATABASE ?? 'sensor_data',
-		username: process.env.INFLUX_USERNAME ?? 'influxdb',
-		password: process.env.INFLUX_PASSWORD ?? 'influxdb'
+	mariadb: {
+		host: process.env.MARIADB_HOST ?? 'localhost',
+		port: parseNumber(process.env.MARIADB_PORT, 3306),
+		user: process.env.MARIADB_USER ?? 'root',
+		password: process.env.MARIADB_PASSWORD ?? '',
+		database: process.env.MARIADB_DATABASE ?? 'sensor_data',
+		table: process.env.BATTERY_DB_TABLE ?? 'battery_measurements'
 	},
 	pollInterval: parseNumber(process.env.BATTERY_POLL_INTERVAL, 1000)
 };
@@ -108,18 +107,58 @@ class BatteryBridge {
 		this.config = config;
 		this.modbusClient = new ModbusRTU();
 		this.mqttClient = null;
-		this.influxClient = new InfluxDB({
-			host: config.influxdb.host,
-			port: config.influxdb.port,
-			database: config.influxdb.database,
-			username: config.influxdb.username,
-			password: config.influxdb.password
-		});
+		this.dbPool = null;
 		this.controllerInfo = null;
 		this.isPolling = false;
 		this.isRunning = false;
 		this.pollTimer = null;
 		this.modbusQueue = Promise.resolve();
+	}
+
+	async setupDatabase() {
+		let adminConnection;
+		try {
+			adminConnection = await mariadb.createConnection({
+				host: this.config.mariadb.host,
+				port: this.config.mariadb.port,
+				user: this.config.mariadb.user,
+				password: this.config.mariadb.password
+			});
+
+			await adminConnection.query(`CREATE DATABASE IF NOT EXISTS ${this.config.mariadb.database}`);
+		} finally {
+			if (adminConnection) {
+				await adminConnection.end();
+			}
+		}
+
+		this.dbPool = mariadb.createPool({
+			host: this.config.mariadb.host,
+			port: this.config.mariadb.port,
+			user: this.config.mariadb.user,
+			password: this.config.mariadb.password,
+			database: this.config.mariadb.database,
+			connectionLimit: 5
+		});
+
+		await this.dbPool.query(`
+			CREATE TABLE IF NOT EXISTS ${this.config.mariadb.table} (
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				recorded_at DATETIME(3) NOT NULL,
+				current_setpoint_ma INT,
+				voltage_setpoint_mv INT,
+				current_measured_ma INT,
+				voltage_measured_mv INT,
+				run_state TINYINT,
+				run_state_label VARCHAR(32),
+				battery_type INT,
+				controller_address INT NULL,
+				device_code INT NULL,
+				firmware_version INT NULL,
+				PRIMARY KEY (id),
+				INDEX idx_recorded_at (recorded_at)
+			)
+		`);
 	}
 
 	async withModbusLock(action, operation) {
@@ -162,13 +201,9 @@ class BatteryBridge {
 		});
 		console.log('[✓] MQTT connected');
 
-		console.log('[INFO] Testing InfluxDB connection...');
-		const databases = await this.influxClient.getDatabaseNames();
-		if (!databases.includes(this.config.influxdb.database)) {
-			console.log(`[INFO] Creating InfluxDB database: ${this.config.influxdb.database}`);
-			await this.influxClient.createDatabase(this.config.influxdb.database);
-		}
-		console.log('[✓] InfluxDB connected');
+		console.log('[INFO] Connecting to MariaDB...');
+		await this.setupDatabase();
+		console.log('[✓] MariaDB connected');
 	}
 
 	async subscribeCommandTopics() {
@@ -291,30 +326,26 @@ class BatteryBridge {
 	}
 
 	async saveBatteryState(state) {
-		const tags = {};
-		if (this.controllerInfo) {
-			tags.controller_address = String(this.controllerInfo.controllerAddress);
-			tags.device_code = String(this.controllerInfo.deviceCode);
-			tags.firmware_version = String(this.controllerInfo.firmwareVersion);
-		}
+		await this.dbPool.query(
+			`INSERT INTO ${this.config.mariadb.table}
+			(recorded_at, current_setpoint_ma, voltage_setpoint_mv, current_measured_ma, voltage_measured_mv, run_state, run_state_label, battery_type, controller_address, device_code, firmware_version)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			[
+				new Date(state.timestamp),
+				state.currentSetpointMa,
+				state.voltageSetpointMv,
+				state.currentMeasuredMa,
+				state.voltageMeasuredMv,
+				state.runState,
+				state.runStateLabel,
+				state.batteryType,
+				this.controllerInfo?.controllerAddress ?? null,
+				this.controllerInfo?.deviceCode ?? null,
+				this.controllerInfo?.firmwareVersion ?? null
+			]
+		);
 
-		await this.influxClient.writePoints([
-			{
-				measurement: 'battery_controller',
-				tags,
-				fields: {
-					current_setpoint_ma: state.currentSetpointMa,
-					voltage_setpoint_mv: state.voltageSetpointMv,
-					current_measured_ma: state.currentMeasuredMa,
-					voltage_measured_mv: state.voltageMeasuredMv,
-					run_state: state.runState,
-					battery_type: state.batteryType
-				},
-				timestamp: new Date(state.timestamp)
-			}
-		]);
-
-		console.log('[InfluxDB] Saved battery_controller point');
+		console.log(`[MariaDB] Saved row in ${this.config.mariadb.table}`);
 	}
 
 	async writeSingleRegister(register, value) {
@@ -522,6 +553,12 @@ class BatteryBridge {
 			this.modbusClient.close(() => {
 				console.log('[✓] Modbus closed');
 			});
+		}
+
+		if (this.dbPool) {
+			await this.dbPool.end();
+			this.dbPool = null;
+			console.log('[✓] MariaDB closed');
 		}
 
 		console.log('[✓] Shutdown complete');
