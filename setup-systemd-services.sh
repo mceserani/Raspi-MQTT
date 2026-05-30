@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Configure these if your setup is different.
-PROJECT_DIR="/home/pi/Raspi-MQTT"
-SERVICE_USER="pi"
+PROJECT_DIR="/home/mceserani/Raspi-MQTT"
+SERVICE_USER="mceserani"
 NODE_BIN="$(command -v node || true)"
 
 if [[ -z "${NODE_BIN}" ]]; then
