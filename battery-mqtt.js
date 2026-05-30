@@ -113,6 +113,7 @@ class BatteryBridge {
 		this.isRunning = false;
 		this.pollTimer = null;
 		this.modbusQueue = Promise.resolve();
+		this.modbusReconnectPromise = null;
 	}
 
 	async setupDatabase() {
@@ -180,12 +181,7 @@ class BatteryBridge {
 
 	async connect() {
 		console.log('[INFO] Connecting to Modbus device...');
-
-		await this.modbusClient.connectRTUBuffered(this.config.modbus.port, {
-			baudRate: this.config.modbus.baudRate
-		});
-		this.modbusClient.setID(this.config.modbus.address);
-		this.modbusClient.setTimeout(this.config.modbus.timeout);
+		await this.ensureModbusConnected();
 		console.log('[✓] Modbus connected');
 
 		console.log('[INFO] Connecting to MQTT broker...');
@@ -206,6 +202,34 @@ class BatteryBridge {
 		console.log('[✓] MariaDB connected');
 	}
 
+	async ensureModbusConnected() {
+		if (this.modbusClient?.isOpen) {
+			return true;
+		}
+
+		if (!this.modbusReconnectPromise) {
+			this.modbusReconnectPromise = (async () => {
+				console.warn('[WARN] Modbus port closed, reconnecting...');
+				await this.modbusClient.connectRTUBuffered(this.config.modbus.port, {
+					baudRate: this.config.modbus.baudRate
+				});
+				this.modbusClient.setID(this.config.modbus.address);
+				this.modbusClient.setTimeout(this.config.modbus.timeout);
+				console.log('[✓] Modbus reconnected');
+			})();
+		}
+
+		try {
+			await this.modbusReconnectPromise;
+			return true;
+		} catch (error) {
+			console.error('[ERROR] Modbus reconnection failed:', error.message);
+			return false;
+		} finally {
+			this.modbusReconnectPromise = null;
+		}
+	}
+
 	async subscribeCommandTopics() {
 		const dispatchTopic = `${this.config.mqtt.baseTopic}/${COMMAND_TOPICS.dispatch}`;
 		await this.mqttClient.subscribe(dispatchTopic, { qos: 1 });
@@ -214,11 +238,23 @@ class BatteryBridge {
 
 	async readRegistersWithFallback(startRegister, count, label) {
 		return this.withModbusLock(`read-${label}`, async () => {
+			const connected = await this.ensureModbusConnected();
+			if (!connected) {
+				throw new Error('Modbus port unavailable');
+			}
+
 			try {
 				const response = await this.modbusClient.readHoldingRegisters(startRegister, count);
 				console.log(`[DEBUG] ${label}: readHoldingRegisters OK`);
 				return response;
 			} catch (holdingError) {
+				if (holdingError?.message?.includes('Port Not Open')) {
+					const reconnected = await this.ensureModbusConnected();
+					if (!reconnected) {
+						throw holdingError;
+					}
+				}
+
 				console.warn(`[WARN] ${label}: readHoldingRegisters failed (${holdingError.message}), trying readInputRegisters...`);
 				const response = await this.modbusClient.readInputRegisters(startRegister, count);
 				console.log(`[DEBUG] ${label}: readInputRegisters OK`);
@@ -351,6 +387,11 @@ class BatteryBridge {
 	async writeSingleRegister(register, value) {
 		const unsignedValue = toUnsigned16(value);
 		await this.withModbusLock(`write-reg-${register}`, async () => {
+			const connected = await this.ensureModbusConnected();
+			if (!connected) {
+				throw new Error('Modbus port unavailable');
+			}
+
 			await this.modbusClient.writeRegister(register, unsignedValue);
 		});
 	}

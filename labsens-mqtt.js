@@ -11,15 +11,25 @@ const MARIADB_USER = process.env.MARIADB_USER ?? 'mceserani';
 const MARIADB_PASSWORD = process.env.MARIADB_PASSWORD ?? '*Pippo123';
 const MARIADB_DATABASE = process.env.MARIADB_DATABASE ?? 'sensor_data';
 
+function parseNumber(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 // Configuration
 const CONFIG = {
   // Modbus settings
   modbus: {
-    port: '/dev/ttyUSB0',
-    baudRate: 115200,
-    address: 29,
+    port: process.env.LABSENS_MODBUS_PORT ?? '/dev/ttyUSB0',
+    baudRate: parseNumber(process.env.LABSENS_BAUD_RATE, 115200),
+    address: parseNumber(process.env.LABSENS_MODBUS_ADDRESS, 29),
     startRegister: 64,
-    registerCount: 6
+    registerCount: 6,
+    timeout: parseNumber(process.env.LABSENS_MODBUS_TIMEOUT, 4000)
   },
   // MQTT settings
   mqtt: {
@@ -38,7 +48,7 @@ const CONFIG = {
     table: process.env.LABSENS_DB_TABLE ?? 'labsens_measurements'
   },
   // Polling interval (milliseconds)
-  pollInterval: 1000
+  pollInterval: parseNumber(process.env.LABSENS_POLL_INTERVAL, 1000)
 };
 
 // Sensor data mapping
@@ -122,7 +132,7 @@ class LabSensorsBridge {
         { baudRate: this.config.modbus.baudRate }
       );
       this.modbusClient.setID(this.config.modbus.address);
-      this.modbusClient.setTimeout(4000);
+      this.modbusClient.setTimeout(this.config.modbus.timeout);
       console.log('[✓] Modbus connected');
     } catch (error) {
       console.error('[ERROR] Modbus connection failed:', error.message);
@@ -151,6 +161,27 @@ class LabSensorsBridge {
     } catch (error) {
       console.error('[ERROR] MariaDB connection failed:', error.message);
       throw error;
+    }
+  }
+
+  async ensureModbusConnected() {
+    if (this.modbusClient?.isOpen) {
+      return true;
+    }
+
+    try {
+      console.warn('[WARN] Modbus port closed, reconnecting...');
+      await this.modbusClient.connectRTUBuffered(
+        this.config.modbus.port,
+        { baudRate: this.config.modbus.baudRate }
+      );
+      this.modbusClient.setID(this.config.modbus.address);
+      this.modbusClient.setTimeout(this.config.modbus.timeout);
+      console.log('[✓] Modbus reconnected');
+      return true;
+    } catch (error) {
+      console.error('[ERROR] Modbus reconnection failed:', error.message);
+      return false;
     }
   }
 
@@ -216,11 +247,23 @@ class LabSensorsBridge {
   }
 
   async readRegistersWithFallback(startRegister, count, label) {
+    const connected = await this.ensureModbusConnected();
+    if (!connected) {
+      throw new Error('Modbus port unavailable');
+    }
+
     try {
       const response = await this.modbusClient.readHoldingRegisters(startRegister, count);
       console.log(`[DEBUG] ${label}: readHoldingRegisters OK`);
       return response;
     } catch (holdingError) {
+      if (holdingError?.message?.includes('Port Not Open')) {
+        const reconnected = await this.ensureModbusConnected();
+        if (!reconnected) {
+          throw holdingError;
+        }
+      }
+
       console.warn(`[WARN] ${label}: readHoldingRegisters failed (${holdingError.message}), trying readInputRegisters...`);
       const response = await this.modbusClient.readInputRegisters(startRegister, count);
       console.log(`[DEBUG] ${label}: readInputRegisters OK`);
