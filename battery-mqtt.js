@@ -1,6 +1,7 @@
 import ModbusRTU from 'modbus-serial';
 import mqtt from 'mqtt';
 import * as mariadb from 'mariadb';
+import { findModbusPort, isAutoPort } from './modbus-autodetect.js';
 
 const MQTT_BROKER = process.env.MQTT_BROKER ?? 'mqtt://localhost:1883';
 const MQTT_USERNAME = process.env.MQTT_USERNAME;
@@ -17,10 +18,13 @@ function parseNumber(value, fallback) {
 
 const CONFIG = {
 	modbus: {
-		port: process.env.BATTERY_MODBUS_PORT ?? '/dev/ttyUSB1',
+		// 'auto' (default) scans /dev/serial/by-id; an explicit path is tried first
+		port: process.env.BATTERY_MODBUS_PORT ?? 'auto',
 		baudRate: parseNumber(process.env.BATTERY_BAUD_RATE, 115200),
 		address: parseNumber(process.env.BATTERY_MODBUS_ADDRESS, 4),
-		timeout: parseNumber(process.env.BATTERY_MODBUS_TIMEOUT, 1000)
+		timeout: parseNumber(process.env.BATTERY_MODBUS_TIMEOUT, 1000),
+		// Consecutive failed polls before re-running port detection
+		maxFailures: parseNumber(process.env.BATTERY_MAX_FAILURES, 10)
 	},
 	mqtt: {
 		broker: MQTT_BROKER,
@@ -32,7 +36,7 @@ const CONFIG = {
 		host: process.env.MARIADB_HOST ?? 'localhost',
 		port: parseNumber(process.env.MARIADB_PORT, 3306),
 		user: process.env.MARIADB_USER ?? 'mceserani',
-		password: process.env.MARIADB_PASSWORD ?? '*Pippo123',
+		password: process.env.MARIADB_PASSWORD,
 		database: process.env.MARIADB_DATABASE ?? 'sensor_data',
 		table: process.env.BATTERY_DB_TABLE ?? 'battery_measurements'
 	},
@@ -114,6 +118,28 @@ class BatteryBridge {
 		this.pollTimer = null;
 		this.modbusQueue = Promise.resolve();
 		this.modbusReconnectPromise = null;
+		this.modbusPort = null;
+		this.consecutiveFailures = 0;
+	}
+
+	// Worst case for readRegistersWithFallback: holding + input request both time out
+	get readTimeout() {
+		return this.config.modbus.timeout * 2 + 500;
+	}
+
+	async openModbus() {
+		const { port, address, baudRate, timeout } = this.config.modbus;
+		this.modbusPort = await findModbusPort({
+			label: 'battery',
+			address,
+			baudRate,
+			probeRegister: REGISTER_MAP.firmwareVersion,
+			preferredPort: this.modbusPort ?? (isAutoPort(port) ? undefined : port)
+		});
+
+		await this.modbusClient.connectRTUBuffered(this.modbusPort, { baudRate });
+		this.modbusClient.setID(address);
+		this.modbusClient.setTimeout(timeout);
 	}
 
 	async setupDatabase() {
@@ -181,8 +207,10 @@ class BatteryBridge {
 
 	async connect() {
 		console.log('[INFO] Connecting to Modbus device...');
-		await this.ensureModbusConnected();
-		console.log('[✓] Modbus connected');
+		if (!(await this.ensureModbusConnected())) {
+			throw new Error('Modbus device not found');
+		}
+		console.log(`[✓] Modbus connected on ${this.modbusPort}`);
 
 		console.log('[INFO] Connecting to MQTT broker...');
 		this.mqttClient = await mqtt.connectAsync(this.config.mqtt.broker, {
@@ -210,12 +238,8 @@ class BatteryBridge {
 		if (!this.modbusReconnectPromise) {
 			this.modbusReconnectPromise = (async () => {
 				console.warn('[WARN] Modbus port closed, reconnecting...');
-				await this.modbusClient.connectRTUBuffered(this.config.modbus.port, {
-					baudRate: this.config.modbus.baudRate
-				});
-				this.modbusClient.setID(this.config.modbus.address);
-				this.modbusClient.setTimeout(this.config.modbus.timeout);
-				console.log('[✓] Modbus reconnected');
+				await this.openModbus();
+				console.log(`[✓] Modbus reconnected on ${this.modbusPort}`);
 			})();
 		}
 
@@ -267,7 +291,7 @@ class BatteryBridge {
 		const response = await Promise.race([
 			this.readRegistersWithFallback(register, 1, label),
 			new Promise((_, reject) => {
-				setTimeout(() => reject(new Error(`Timeout reading register ${register}`)), this.config.modbus.timeout + 1000);
+				setTimeout(() => reject(new Error(`Timeout reading register ${register}`)), this.readTimeout);
 			})
 		]);
 
@@ -286,7 +310,7 @@ class BatteryBridge {
 			deviceCode,
 			baudRate: decodeBaudRate(baudRateCode),
 			baudRateCode,
-			port: this.config.modbus.port,
+			port: this.modbusPort,
 			polledAt: new Date().toISOString()
 		};
 	}
@@ -295,7 +319,7 @@ class BatteryBridge {
 		const response = await Promise.race([
 			this.readRegistersWithFallback(REGISTER_MAP.currentSetpoint, 6, 'battery state block 400-405'),
 			new Promise((_, reject) => {
-				setTimeout(() => reject(new Error('Battery state read timeout')), this.config.modbus.timeout + 1000);
+				setTimeout(() => reject(new Error('Battery state read timeout')), this.readTimeout);
 			})
 		]);
 
@@ -534,6 +558,7 @@ class BatteryBridge {
 		this.isPolling = true;
 		try {
 			const state = await this.readBatteryState();
+			this.consecutiveFailures = 0;
 			console.log('[DATA]', state);
 			await Promise.all([
 				this.publishBatteryState(state),
@@ -541,9 +566,28 @@ class BatteryBridge {
 			]);
 		} catch (error) {
 			console.error('[ERROR] Poll cycle failed:', error.message);
+			await this.handleReadFailure();
 		} finally {
 			this.isPolling = false;
 		}
+	}
+
+	// After too many failed polls the device may have moved to another adapter:
+	// close the port so the next read re-runs port detection.
+	async handleReadFailure() {
+		this.consecutiveFailures++;
+		if (this.consecutiveFailures < this.config.modbus.maxFailures) {
+			return;
+		}
+
+		this.consecutiveFailures = 0;
+		await this.withModbusLock('close-for-redetect', async () => {
+			if (!this.modbusClient.isOpen) {
+				return;
+			}
+			console.warn(`[WARN] Too many consecutive read failures, closing ${this.modbusPort} to re-detect the device`);
+			await new Promise((resolve) => this.modbusClient.close(() => resolve()));
+		});
 	}
 
 	async start() {
@@ -590,7 +634,7 @@ class BatteryBridge {
 			await this.mqttClient.endAsync();
 		}
 
-		if (this.modbusClient) {
+		if (this.modbusClient?.isOpen) {
 			this.modbusClient.close(() => {
 				console.log('[✓] Modbus closed');
 			});
@@ -604,6 +648,11 @@ class BatteryBridge {
 
 		console.log('[✓] Shutdown complete');
 	}
+}
+
+if (!CONFIG.mariadb.password) {
+	console.error('[FATAL] MARIADB_PASSWORD is not set (add it to .env)');
+	process.exit(1);
 }
 
 const bridge = new BatteryBridge(CONFIG);

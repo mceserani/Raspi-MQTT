@@ -1,6 +1,7 @@
 import ModbusRTU from 'modbus-serial';
 import mqtt from 'mqtt';
 import * as mariadb from 'mariadb';
+import { findModbusPort, isAutoPort } from './modbus-autodetect.js';
 
 const MQTT_BROKER = process.env.MQTT_BROKER ?? 'mqtt://localhost:1883';
 const MQTT_USERNAME = process.env.MQTT_USERNAME;
@@ -8,7 +9,7 @@ const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 const MARIADB_HOST = process.env.MARIADB_HOST ?? 'localhost';
 const MARIADB_PORT = Number(process.env.MARIADB_PORT ?? 3306);
 const MARIADB_USER = process.env.MARIADB_USER ?? 'mceserani';
-const MARIADB_PASSWORD = process.env.MARIADB_PASSWORD ?? '*Pippo123';
+const MARIADB_PASSWORD = process.env.MARIADB_PASSWORD;
 const MARIADB_DATABASE = process.env.MARIADB_DATABASE ?? 'sensor_data';
 
 function parseNumber(value, fallback) {
@@ -24,12 +25,15 @@ function parseNumber(value, fallback) {
 const CONFIG = {
   // Modbus settings
   modbus: {
-    port: process.env.LABSENS_MODBUS_PORT ?? '/dev/ttyUSB0',
+    // 'auto' (default) scans /dev/serial/by-id; an explicit path is tried first
+    port: process.env.LABSENS_MODBUS_PORT ?? 'auto',
     baudRate: parseNumber(process.env.LABSENS_BAUD_RATE, 115200),
     address: parseNumber(process.env.LABSENS_MODBUS_ADDRESS, 29),
     startRegister: 64,
     registerCount: 6,
-    timeout: parseNumber(process.env.LABSENS_MODBUS_TIMEOUT, 4000)
+    timeout: parseNumber(process.env.LABSENS_MODBUS_TIMEOUT, 1000),
+    // Consecutive failed polls before re-running port detection
+    maxFailures: parseNumber(process.env.LABSENS_MAX_FAILURES, 10)
   },
   // MQTT settings
   mqtt: {
@@ -77,6 +81,29 @@ class LabSensorsBridge {
     this.dbPool = null;
     this.isRunning = false;
     this.isPolling = false;
+    this.modbusPort = null;
+    this.modbusReconnectPromise = null;
+    this.consecutiveFailures = 0;
+  }
+
+  // Worst case for readRegistersWithFallback: holding + input request both time out
+  get readTimeout() {
+    return this.config.modbus.timeout * 2 + 500;
+  }
+
+  async openModbus() {
+    const { port, address, baudRate, timeout } = this.config.modbus;
+    this.modbusPort = await findModbusPort({
+      label: 'labsens',
+      address,
+      baudRate,
+      probeRegister: this.config.modbus.startRegister,
+      preferredPort: this.modbusPort ?? (isAutoPort(port) ? undefined : port)
+    });
+
+    await this.modbusClient.connectRTUBuffered(this.modbusPort, { baudRate });
+    this.modbusClient.setID(address);
+    this.modbusClient.setTimeout(timeout);
   }
 
   async setupDatabase() {
@@ -127,13 +154,8 @@ class LabSensorsBridge {
   async connect() {
     console.log('[INFO] Connecting to Modbus device...');
     try {
-      await this.modbusClient.connectRTUBuffered(
-        this.config.modbus.port,
-        { baudRate: this.config.modbus.baudRate }
-      );
-      this.modbusClient.setID(this.config.modbus.address);
-      this.modbusClient.setTimeout(this.config.modbus.timeout);
-      console.log('[✓] Modbus connected');
+      await this.openModbus();
+      console.log(`[✓] Modbus connected on ${this.modbusPort}`);
     } catch (error) {
       console.error('[ERROR] Modbus connection failed:', error.message);
       throw error;
@@ -169,15 +191,19 @@ class LabSensorsBridge {
       return true;
     }
 
+    // Port detection can outlast a read timeout: share one reconnect between callers
+    if (!this.modbusReconnectPromise) {
+      this.modbusReconnectPromise = (async () => {
+        console.warn('[WARN] Modbus port closed, reconnecting...');
+        await this.openModbus();
+        console.log(`[✓] Modbus reconnected on ${this.modbusPort}`);
+      })().finally(() => {
+        this.modbusReconnectPromise = null;
+      });
+    }
+
     try {
-      console.warn('[WARN] Modbus port closed, reconnecting...');
-      await this.modbusClient.connectRTUBuffered(
-        this.config.modbus.port,
-        { baudRate: this.config.modbus.baudRate }
-      );
-      this.modbusClient.setID(this.config.modbus.address);
-      this.modbusClient.setTimeout(this.config.modbus.timeout);
-      console.log('[✓] Modbus reconnected');
+      await this.modbusReconnectPromise;
       return true;
     } catch (error) {
       console.error('[ERROR] Modbus reconnection failed:', error.message);
@@ -194,11 +220,11 @@ class LabSensorsBridge {
         'sensor block 64-69'
       );
       
-      // Add 5-second timeout to prevent infinite hanging
+      // Guard against hanging; longer than both fallback requests so none is left pending
       const response = await Promise.race([
         readPromise,
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Modbus read timeout after 5s')), 5000)
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Modbus read timeout after ${this.readTimeout}ms`)), this.readTimeout)
         )
       ]);
       
@@ -227,7 +253,7 @@ class LabSensorsBridge {
       const response = await Promise.race([
         readPromise,
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Modbus NTC read timeout after 5s')), 5000)
+          setTimeout(() => reject(new Error(`Modbus NTC read timeout after ${this.readTimeout}ms`)), this.readTimeout)
         )
       ]);
 
@@ -335,6 +361,19 @@ class LabSensorsBridge {
     }
   }
 
+  // After too many failed polls the device may have moved to another adapter:
+  // close the port so the next read re-runs port detection.
+  async handleReadFailure() {
+    this.consecutiveFailures++;
+    if (this.consecutiveFailures < this.config.modbus.maxFailures || !this.modbusClient.isOpen) {
+      return;
+    }
+
+    console.warn(`[WARN] ${this.consecutiveFailures} consecutive read failures, closing ${this.modbusPort} to re-detect the device`);
+    this.consecutiveFailures = 0;
+    await new Promise((resolve) => this.modbusClient.close(() => resolve()));
+  }
+
   async poll() {
     if (this.isPolling) {
       console.log('[POLL] Previous cycle still running, skipping this tick');
@@ -351,8 +390,11 @@ class LabSensorsBridge {
 
       if (!sensorValues || !ntcValues) {
         console.log('[POLL] Skipping update due to read error (will retry next tick)');
+        await this.handleReadFailure();
         return;
       }
+
+      this.consecutiveFailures = 0;
 
       console.log('[DATA]', { ...sensorValues, ...ntcValues });
 
@@ -383,11 +425,13 @@ class LabSensorsBridge {
         await this.poll();
       }, this.config.pollInterval);
 
-      process.on('SIGINT', async () => {
+      const shutdown = async () => {
         console.log('\n[INFO] Shutting down gracefully...');
         await this.stop();
         process.exit(0);
-      });
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
 
     } catch (error) {
       console.error('[FATAL] Failed to start:', error.message);
@@ -404,7 +448,7 @@ class LabSensorsBridge {
       await this.mqttClient.endAsync();
     }
 
-    if (this.modbusClient) {
+    if (this.modbusClient?.isOpen) {
       this.modbusClient.close(() => {
         console.log('[✓] Modbus closed');
       });
@@ -421,6 +465,11 @@ class LabSensorsBridge {
 }
 
 // Main entry point
+if (!CONFIG.mariadb.password) {
+  console.error('[FATAL] MARIADB_PASSWORD is not set (add it to .env)');
+  process.exit(1);
+}
+
 const bridge = new LabSensorsBridge(CONFIG);
 bridge.start().catch((error) => {
   console.error('[FATAL] Unexpected error:', error);
