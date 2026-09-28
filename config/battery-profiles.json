@@ -1,0 +1,19 @@
+{
+  "$comment": "Profili di sicurezza batteria. Un profilo con placeholder=true o con un limite a null NON è utilizzabile: l'agente può solo osservare (default deny). Unità: vMin/vMax mV, iChargeMax/iDischargeMax mA (valori positivi), tempMax °C (NTC), maxPhaseDuration s.",
+  "version": 1,
+  "profiles": {
+    "segnaposto": {
+      "description": "SEGNAPOSTO — valori da definire per il tipo di batteria reale",
+      "placeholder": true,
+      "batteryTypeCodes": [],
+      "limits": {
+        "vMin": null,
+        "vMax": null,
+        "iChargeMax": null,
+        "iDischargeMax": null,
+        "tempMax": null,
+        "maxPhaseDuration": null
+      }
+    }
+  }
+}

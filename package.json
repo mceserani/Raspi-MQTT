@@ -8,15 +8,20 @@
     "battery-cmd-bridge": "node --env-file=.env battery-cmd-bridge.js",
     "battery-remote": "node --env-file=.env battery-remote-dashboard.js",
     "dashboard": "node --env-file=.env dashboard.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test \"test/**/*.test.js\"",
+    "simulator": "node --env-file-if-exists=.env tools/simulator.js",
+    "dev-broker": "node tools/dev-broker.js"
   },
   "author": "Matteo Ceserani",
   "license": "MIT",
   "description": "MQTT publisher for Modbus sensors with MariaDB storage",
   "type": "module",
   "dependencies": {
+    "mariadb": "^3.4.2",
     "modbus-serial": "^8.0.0",
-    "mqtt": "^5.3.0",
-    "mariadb": "^3.4.2"
+    "mqtt": "^5.3.0"
+  },
+  "devDependencies": {
+    "aedes": "^1.2.0"
   }
 }

@@ -1,8 +1,8 @@
 # Piano: monitoraggio e analisi delle misure affidati a un agente
 
 > Documento di lavoro per riprendere il progetto in sessioni successive.
-> Stato: **fase di progettazione — nessun codice ancora scritto.**
-> Ultimo aggiornamento: 2026-09-25
+> Stato: **implementazione in corso sul ramo `feat/agente`** — vedi §9 per l'avanzamento.
+> Ultimo aggiornamento: 2026-09-28
 
 ---
 
@@ -62,6 +62,11 @@ Rilevamento automatico porte seriali: `modbus-autodetect.js`.
 | Dove gira l'agente | **Sul Raspberry Pi** |
 | Notifiche | **Telegram** |
 | Codice esistente | Non va modificato: tutto il nuovo software è **additivo** (nuovi file/servizi) |
+| Hardware | Raspberry Pi 4B, 4 GB RAM (serve OS a 64 bit per Claude Code) |
+| Pagamento agente | **Abbonamento Claude**: token di lunga durata (`claude setup-token`) in `CLAUDE_CODE_OAUTH_TOKEN`. La quota è condivisa con l'uso personale → budget espresso in **numero di esecuzioni/giorno** |
+| Modelli | **Haiku** per il triage degli eventi (con escalation); **Sonnet** per report, `/report`, `/ask`, decisioni e procedure batteria. Configurabili da file |
+| Selezione profilo batteria | Supportate entrambe: registro 405 (`batteryTypeCodes`) e dichiarazione manuale, che ha la precedenza |
+| Credenziali Telegram | Solo il supervisore conosce il token del bot; l'agente invia messaggi passando dal supervisore |
 
 ---
 
@@ -233,8 +238,39 @@ Il supervisore sveglia l'agente solo alla fine o in caso di anomalia.
 
 ## 8. Domande aperte (da risolvere prima di scrivere codice)
 
-1. **Modello e RAM del Raspberry Pi** (Claude Code + supervisore stanno bene su Pi 4/5 con ≥ 2 GB).
-2. **Pagamento dell'agente:** API key (a consumo, costi facili da limitare) o abbonamento Claude?
-3. **Tipi di batteria:** il registro `batteryType` (405) li distingue in modo affidabile, o il tipo va dichiarato a mano (es. `/battery <profilo>`)?
+1. ~~Modello e RAM del Raspberry Pi~~ → Pi 4B, 4 GB.
+2. ~~Pagamento dell'agente~~ → abbonamento Claude.
+3. **Tipi di batteria:** il registro `batteryType` (405) li distingue in modo affidabile? *(Non blocca: il codice supporta registro e dichiarazione manuale.)*
 4. **Orari dei report:** ora del report giornaliero e giorno del report settimanale.
 5. **Valori dei profili batteria** (da definire più avanti per ogni tipo).
+
+---
+
+## 9. Tabella di marcia e avanzamento
+
+Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardware: `npm run simulator -- --broker`.
+
+| # | Tappa | Stato |
+|---|---|---|
+| 0 | Fondamenta: `.env.example`, `config/battery-profiles.json` + `lib/battery-profiles.js`, simulatore (`tools/simulator.js`, `tools/dev-broker.js`), `setup-agent-prereqs.sh` | ✅ fatto (script prerequisiti da eseguire sul Pi) |
+| 1a | Supervisore: schema DB (`events`, `summary_minute`, `summary_hour`, `supervisor_state`) | ⏳ |
+| 1b | Supervisore: regole (soglie, dati fermi, rate-of-change, batteria, salute servizi) | ⏳ |
+| 1c | Supervisore: interblocco sui valori misurati + profilo attivo, default deny | ⏳ |
+| 1d | Supervisore: aggregazioni minuto/ora | ⏳ |
+| 1e | Supervisore: Telegram in uscita + `/status`, `/stop`, `/battery` | ⏳ |
+| 1f | Supervisore: `raspi-supervisor.service` | ⏳ |
+| 2a | MCP: tool di lettura | ⏳ |
+| 2b | MCP: `send_battery_command` validato, `send_telegram`, audit | ⏳ |
+| 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) | ⏳ |
+| 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet | ⏳ |
+| 3c | Agente: report giornaliero/settimanale, `/report`, `/ask` | ⏳ |
+| 4a | `battery_cycles` + `get_battery_cycles` | ⏳ |
+| 4b | Procedure batteria (macchina a stati) | ⏳ |
+| 4c | Profili reali | ⏳ (domanda 5) |
+| 5 | Opzionale: retention DB, snapshot JSON | da decidere |
+
+### Note di implementazione
+
+- **Bug del segno di `labsens`:** il codice esistente non si tocca; il supervisore reinterpreta i valori come interi con segno (valori ≥ 327,68 per le grandezze /100 → negativi). Il simulatore riproduce il bug di proposito.
+- **Convenzione corrente (ipotesi da verificare sul banco):** corrente misurata positiva in carica, negativa in scarica.
+- **Separazione utenti:** il supervisore gira come l'utente dei servizi esistenti; l'agente come `raspi-agent`. Il supervisore non può lanciare processi come un altro utente senza sudo, quindi il lanciatore (3a) sarà un servizio separato che gira come `raspi-agent` e riceve i lavori dal supervisore.
