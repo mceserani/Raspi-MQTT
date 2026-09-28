@@ -1,0 +1,95 @@
+{
+  "$comment": "Configurazione del supervisore. Le soglie sono valori iniziali da tarare sul laboratorio. Tempi in secondi. window = media mobile su cui si valuta la soglia; sustain = per quanto la condizione deve durare prima di aprire un evento; hysteresis = margine per chiuderlo; valid = intervallo fisicamente plausibile.",
+
+  "lab": {
+    "staleSeconds": 30,
+    "sensors": {
+      "temperature": {
+        "valid": [-20, 60],
+        "high": { "warning": 30, "critical": 35 },
+        "low": { "warning": 15, "critical": 10 },
+        "hysteresis": 0.5, "window": 30, "sustain": 60,
+        "rate": { "maxDelta": 3, "per": 60 }
+      },
+      "humidity": {
+        "valid": [0, 100],
+        "high": { "warning": 70, "critical": 85 },
+        "low": { "warning": 25, "critical": 15 },
+        "hysteresis": 2, "window": 30, "sustain": 120,
+        "rate": { "maxDelta": 15, "per": 60 }
+      },
+      "pm2_5": {
+        "valid": [0, 1000],
+        "high": { "warning": 35, "critical": 75 },
+        "hysteresis": 3, "window": 60, "sustain": 120,
+        "rate": { "maxDelta": 100, "per": 60 }
+      },
+      "pm10": {
+        "valid": [0, 1000],
+        "high": { "warning": 50, "critical": 150 },
+        "hysteresis": 5, "window": 60, "sustain": 120,
+        "rate": { "maxDelta": 150, "per": 60 }
+      },
+      "voc": {
+        "valid": [0, 500],
+        "high": { "warning": 250, "critical": 400 },
+        "hysteresis": 10, "window": 60, "sustain": 120
+      },
+      "nox": {
+        "valid": [0, 500],
+        "high": { "warning": 20, "critical": 150 },
+        "hysteresis": 2, "window": 60, "sustain": 120
+      },
+      "ntc_temperature": {
+        "valid": [-20, 100],
+        "rate": { "maxDelta": 5, "per": 60 }
+      }
+    }
+  },
+
+  "battery": {
+    "staleSeconds": 30,
+    "settleSeconds": 20,
+    "sustain": 15,
+    "currentTolerancePct": 10,
+    "currentToleranceMa": 20,
+    "voltageToleranceMv": 50,
+    "cvBandMv": 50,
+    "commandAckWindowSeconds": 10
+  },
+
+  "interlock": {
+    "confirmSamples": 2,
+    "stopVerifySeconds": 5,
+    "stopRetries": 3,
+    "stopOnMissingTemperature": true,
+    "temperatureStaleSeconds": 60
+  },
+
+  "health": {
+    "intervalSeconds": 60,
+    "journalWindow": "5min",
+    "errorThreshold": 20,
+    "services": {
+      "raspi-labsens": "critical",
+      "raspi-battery": "critical",
+      "raspi-battery-cmd-bridge": "warning",
+      "mariadb": "critical",
+      "mosquitto": "critical"
+    }
+  },
+
+  "aggregation": {
+    "intervalSeconds": 30,
+    "lagSeconds": 15,
+    "backfillHours": 24
+  },
+
+  "telegram": {
+    "notifyMinSeverity": "warning",
+    "notifyResolved": true,
+    "maxMessagesPerMinute": 10
+  },
+
+  "statusPublishSeconds": 5
+}

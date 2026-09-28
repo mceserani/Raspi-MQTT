@@ -10,7 +10,8 @@
     "dashboard": "node --env-file=.env dashboard.js",
     "test": "node --test \"test/**/*.test.js\"",
     "simulator": "node --env-file-if-exists=.env tools/simulator.js",
-    "dev-broker": "node tools/dev-broker.js"
+    "dev-broker": "node tools/dev-broker.js",
+    "supervisor": "node --env-file=.env supervisor/index.js"
   },
   "author": "Matteo Ceserani",
   "license": "MIT",

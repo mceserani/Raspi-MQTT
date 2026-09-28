@@ -115,7 +115,7 @@ Rilevamento automatico porte seriali: `modbus-autodetect.js`.
 - batteria: misurato ≠ setpoint oltre tolleranza, tensione fuori finestra, cambio di `run_state` non comandato;
 - salute servizi: `systemctl is-active`, conteggio errori recenti nel journal (solo conteggi, non testo).
 
-**Output:** tabella `events` (timestamp, sorgente, tipo, gravità info/warning/critical, dettagli JSON, stato gestione).
+**Output:** tabella `supervisor_events` (timestamp, sorgente, tipo, gravità info/warning/critical, dettagli JSON, stato gestione).
 
 **Aggregazioni periodiche** (job SQL):
 - riassunti per minuto e per ora: media, min, max, p95, numero campioni, buchi;
@@ -253,12 +253,12 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | # | Tappa | Stato |
 |---|---|---|
 | 0 | Fondamenta: `.env.example`, `config/battery-profiles.json` + `lib/battery-profiles.js`, simulatore (`tools/simulator.js`, `tools/dev-broker.js`), `setup-agent-prereqs.sh` | ✅ fatto (script prerequisiti da eseguire sul Pi) |
-| 1a | Supervisore: schema DB (`events`, `summary_minute`, `summary_hour`, `supervisor_state`) | ⏳ |
-| 1b | Supervisore: regole (soglie, dati fermi, rate-of-change, batteria, salute servizi) | ⏳ |
-| 1c | Supervisore: interblocco sui valori misurati + profilo attivo, default deny | ⏳ |
-| 1d | Supervisore: aggregazioni minuto/ora | ⏳ |
-| 1e | Supervisore: Telegram in uscita + `/status`, `/stop`, `/battery` | ⏳ |
-| 1f | Supervisore: `raspi-supervisor.service` | ⏳ |
+| 1a | Supervisore: schema DB (`supervisor_events`, `summary_minute`, `summary_hour`, `supervisor_state`) | ✅ fatto (da verificare su MariaDB reale) |
+| 1b | Supervisore: regole (soglie, dati fermi, rate-of-change, batteria, salute servizi) | ✅ fatto (soglie da tarare) |
+| 1c | Supervisore: interblocco sui valori misurati + profilo attivo, default deny | ✅ fatto |
+| 1d | Supervisore: aggregazioni minuto/ora | ✅ fatto |
+| 1e | Supervisore: Telegram in uscita + `/status`, `/stop`, `/eventi`, `/battery`, `/reset` | ✅ fatto (da provare con il bot reale) |
+| 1f | Supervisore: `raspi-supervisor.service` (`setup-supervisor-service.sh`) | ✅ fatto |
 | 2a | MCP: tool di lettura | ⏳ |
 | 2b | MCP: `send_battery_command` validato, `send_telegram`, audit | ⏳ |
 | 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) | ⏳ |
@@ -273,4 +273,5 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 
 - **Bug del segno di `labsens`:** il codice esistente non si tocca; il supervisore reinterpreta i valori come interi con segno (valori ≥ 327,68 per le grandezze /100 → negativi). Il simulatore riproduce il bug di proposito.
 - **Convenzione corrente (ipotesi da verificare sul banco):** corrente misurata positiva in carica, negativa in scarica.
+- **Supervisore:** documentazione operativa in [supervisore.md](supervisore.md). Lo stop dell'interblocco e di `/stop` va direttamente su `command/dispatch` (non dipende dal bridge). Lo stato è pubblicato su `supervisor/status` (retained) per il server MCP.
 - **Separazione utenti:** il supervisore gira come l'utente dei servizi esistenti; l'agente come `raspi-agent`. Il supervisore non può lanciare processi come un altro utente senza sudo, quindi il lanciatore (3a) sarà un servizio separato che gira come `raspi-agent` e riceve i lavori dal supervisore.

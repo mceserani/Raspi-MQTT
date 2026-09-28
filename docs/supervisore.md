@@ -1,0 +1,106 @@
+# Supervisore (`raspi-supervisor`)
+
+Livello deterministico tra i servizi esistenti e l'agente (vedi [PIANO-AGENTE.md](PIANO-AGENTE.md), §5.1). Non usa token: sorveglia MQTT, apre e chiude eventi, ferma la batteria se esce dai limiti del profilo, calcola i riassunti e parla con Telegram.
+
+I servizi esistenti non vengono modificati: il supervisore si limita a leggere i loro topic e a inviare lo stop sullo stesso canale dei comandi.
+
+---
+
+## Installazione sul Raspberry
+
+```bash
+git fetch origin && git checkout feat/agente
+# in .env: TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID (vedi sotto)
+./setup-supervisor-service.sh
+journalctl -u raspi-supervisor -f
+```
+
+Lo script crea `raspi-supervisor.service` (stesso utente dei servizi esistenti, gruppo `systemd-journal` per leggere i contatori di errore), lo abilita e lo avvia.
+
+### Telegram
+
+1. Crea il bot con **@BotFather** (`/newbot`) e copia il token in `TELEGRAM_BOT_TOKEN`.
+2. Lascia vuoto `TELEGRAM_CHAT_ID`, avvia il supervisore e scrivi un messaggio qualsiasi al bot: risponde con il tuo chat_id.
+3. Copia il chat_id in `TELEGRAM_CHAT_ID` e riavvia: da quel momento il bot accetta comandi **solo** da quella chat.
+
+Senza token il supervisore funziona lo stesso: le notifiche finiscono solo nel journal.
+
+### Prova sul PC, senza hardware
+
+```bash
+npm run simulator -- --broker --speed 60   # broker + sensori + batteria simulati
+npm run supervisor                          # in un altro terminale
+```
+
+Nel simulatore: `fault overvoltage`, `set pm2_5 120`, `pause lab 60`, `fault runstate`… (`help` per l'elenco). Per provare l'interblocco serve un profilo utilizzabile con `batteryTypeCodes: [0]` (il simulatore usa il tipo 0).
+
+---
+
+## Cosa controlla
+
+| Regola | Chiave evento | Gravità |
+|---|---|---|
+| Soglia alta/bassa (media mobile `window`, dopo `sustain`, chiusura con `hysteresis`) | `lab:threshold:<sensore>:<high\|low>` | warning / critical |
+| Lettura fuori dall'intervallo plausibile `valid` | `lab:invalid:<sensore>` | warning |
+| Variazione rapida (escursione > `maxDelta` in `per` secondi) | `lab:rate:<sensore>` | warning |
+| Nessun dato da `staleSeconds` | `lab:stale`, `battery:stale` | warning (critical se la batteria era in marcia) |
+| Corrente lontana dal setpoint (in carica solo in fase CC) | `battery:current_deviation` | warning |
+| Tensione in carica sopra il setpoint | `battery:voltage_over_setpoint` | warning |
+| Batteria in marcia senza profilo utilizzabile | `battery:no_profile` | warning |
+| Cambio di `run_state` senza un ack di comando | `battery:uncommanded_run_state` | warning |
+| Comando rifiutato (ack `error`) | `battery:command_error` | warning |
+| Servizio non attivo | `health:inactive:<unità>` | secondo `health.services` |
+| Troppi `[ERROR]`/`[FATAL]` nel journal | `health:errors:<unità>` | warning |
+| Supervisore scollegato da MQTT / MariaDB | `supervisor:mqtt_down`, `supervisor:db_down` | critical / warning |
+
+Tutte le soglie sono in [`config/supervisor.json`](../config/supervisor.json): i valori attuali sono **iniziali, da tarare**.
+
+Le temperature arrivano da `labsens-mqtt.js` senza segno (−1,5 °C diventa 653,86): il supervisore le corregge prima di valutarle e di aggregarle.
+
+## Interblocco batteria
+
+Controlla i valori **misurati** a ogni stato ricevuto (1 Hz), solo con batteria in marcia e profilo utilizzabile:
+
+- tensione > `vMax`; tensione < `vMin` in scarica;
+- |corrente| > `iChargeMax` in carica o > `iDischargeMax` in scarica (in valore assoluto: non dipende dalla convenzione di segno);
+- temperatura NTC > `tempMax`, oppure NTC assente da `temperatureStaleSeconds` (se `stopOnMissingTemperature`);
+- fase attiva da più di `maxPhaseDuration`.
+
+Una violazione confermata per `confirmSamples` campioni consecutivi invia `set_run_state 0` **direttamente su `command/dispatch`** (funziona anche senza il bridge), verifica che lo stato torni a 0 e riprova fino a `stopRetries` volte; se non basta apre `interlock:stop_failed` (critical). L'interblocco resta **scattato** (latch, salvato nel DB) finché non si usa `/reset`: la fase 2 impedirà all'agente di riavviare la batteria finché il latch è attivo.
+
+Profilo attivo: dichiarazione manuale (`/battery <nome>`) oppure `batteryTypeCodes` sul registro 405. Tipo sconosciuto, profilo segnaposto o incompleto → **solo osservazione**, interblocco inattivo (e `battery:no_profile` se la batteria è in marcia). Dopo aver modificato `config/battery-profiles.json`: `sudo systemctl reload raspi-supervisor`.
+
+## Comandi Telegram
+
+| Comando | Effetto |
+|---|---|
+| `/status` | Valori attuali, batteria, profilo, interblocco, eventi aperti, servizi |
+| `/stop` | Stop immediato della batteria, con conferma |
+| `/eventi` | Eventi aperti |
+| `/battery [nome\|auto]` | Mostra o dichiara il profilo batteria |
+| `/reset` | Riarma l'interblocco dopo le verifiche |
+| `/report`, `/ask` | Riservati all'agente (fase 3) |
+
+Notifiche: eventi dalla gravità `notifyMinSeverity` in su, rientri, al massimo `maxMessagesPerMinute` messaggi al minuto (i critical passano sempre).
+
+## Tabelle
+
+| Tabella | Contenuto |
+|---|---|
+| `supervisor_events` | Un evento per condizione: apertura, gravità attuale e di picco, messaggio, dettagli JSON, `resolved_at`, `agent_status` (`pending` per warning/critical, `skip` per info: lo userà l'agente) |
+| `summary_minute`, `summary_hour` | Per ogni bucket, sorgente (`lab`/`battery`) e grandezza: `samples`, media, min, max, p95, `max_gap_s`. I bucket senza dati sono scritti con `samples = 0` |
+| `supervisor_state` | Stato persistente: profilo dichiarato, latch dell'interblocco, avanzamento delle aggregazioni |
+
+Le date sono in ora locale, come nelle tabelle esistenti. Se MariaDB non risponde il supervisore continua a funzionare: gli eventi restano in coda e le aggregazioni recuperano quando torna.
+
+Verifiche utili:
+
+```sql
+SELECT created_at, severity, message, resolved_at FROM supervisor_events ORDER BY id DESC LIMIT 20;
+SELECT * FROM summary_hour WHERE source = 'lab' AND metric = 'pm2_5' ORDER BY bucket_start DESC LIMIT 24;
+SELECT * FROM supervisor_state;
+```
+
+## Stato pubblicato
+
+Ogni `statusPublishSeconds` il supervisore pubblica su `supervisor/status` (retained) uno snapshot JSON: valori attuali, profilo attivo con i limiti, latch, eventi aperti, salute dei servizi. Se il processo cade, il broker pubblica `{"online": false}` (last will). Il server MCP della fase 2 leggerà da qui.
