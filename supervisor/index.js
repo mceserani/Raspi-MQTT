@@ -3,6 +3,7 @@
 // aggregations, service health and Telegram. Uses 0 tokens.
 import mqtt from 'mqtt';
 import { loadProfiles, resolveActiveProfile } from '../lib/battery-profiles.js';
+import { AgentLink } from './agent-link.js';
 import { Aggregator } from './aggregator.js';
 import { BOT_COMMANDS, createCommandHandler } from './commands.js';
 import { loadEnvConfig, loadSupervisorConfig } from './config.js';
@@ -38,6 +39,7 @@ const eventStore = new EventStore(db);
 const bot = new TelegramBot(env.telegram);
 const notifier = new Notifier({ bot, config: config.telegram });
 const events = new EventManager({ store: eventStore, notifier });
+const agentLink = new AgentLink({ bot, events, config: config.telegram });
 
 const engine = new RuleEngine(config, { profileProvider: activeProfile });
 const interlock = new Interlock(config.interlock, {
@@ -59,7 +61,8 @@ const TOPICS = {
 	lab: `${env.labTopic}/#`,
 	batteryState: `${env.batteryTopic}/state`,
 	ack: `${env.batteryTopic}/command/ack`,
-	dispatch: `${env.batteryTopic}/command/dispatch`
+	dispatch: `${env.batteryTopic}/command/dispatch`,
+	agent: `${env.agentTopic}/+`
 };
 
 let mqttDownSince = startedAt;
@@ -74,7 +77,7 @@ const client = mqtt.connect(env.mqtt.broker, {
 client.on('connect', () => {
 	mqttDownSince = null;
 	console.log(`[✓] MQTT connected to ${env.mqtt.broker}`);
-	client.subscribe([TOPICS.lab, TOPICS.batteryState, TOPICS.ack], { qos: 1 }, (error) => {
+	client.subscribe([TOPICS.lab, TOPICS.batteryState, TOPICS.ack, TOPICS.agent], { qos: 1 }, (error) => {
 		if (error) console.error('[ERROR] MQTT subscribe failed:', error.message);
 	});
 });
@@ -107,6 +110,8 @@ client.on('message', (topic, payloadBuffer) => {
 		}, now);
 	} else if (topic === TOPICS.ack) {
 		engine.onAck(payload, now);
+	} else if (topic.startsWith(`${env.agentTopic}/`)) {
+		agentLink.handle(topic.slice(env.agentTopic.length + 1), payload);
 	}
 });
 

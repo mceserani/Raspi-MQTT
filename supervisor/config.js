@@ -38,6 +38,7 @@ export function loadEnvConfig(env = process.env) {
 		labTopic: 'sensors/lab',
 		batteryTopic: env.BATTERY_MQTT_TOPIC ?? 'sensors/battery',
 		statusTopic: env.SUPERVISOR_STATUS_TOPIC ?? 'supervisor/status',
+		agentTopic: env.SUPERVISOR_AGENT_TOPIC ?? 'supervisor/agent',
 		profilesFile: projectPath(env.BATTERY_PROFILES_FILE, 'config/battery-profiles.json'),
 		supervisorConfigFile: projectPath(env.SUPERVISOR_CONFIG_FILE, 'config/supervisor.json'),
 		telegram: {

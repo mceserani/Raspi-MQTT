@@ -1,0 +1,41 @@
+{
+  "$comment": "Configurazione del server MCP dell'agente (docs/PIANO-AGENTE.md §5.5). I margini rendono i limiti dei comandi più stretti delle soglie dell'interblocco: un setpoint accettato non deve far scattare l'interblocco per il rumore di misura. Tempi in secondi.",
+
+  "commands": {
+    "voltageMarginMv": 30,
+    "currentMarginPct": 5,
+    "temperatureMarginC": 5,
+    "temperatureMaxAgeSeconds": 60,
+    "batteryMaxAgeSeconds": 10,
+    "ackTimeoutSeconds": 10,
+    "maxPerMinute": 6
+  },
+
+  "status": {
+    "maxAgeSeconds": 20,
+    "waitSeconds": 5
+  },
+
+  "queries": {
+    "maxRows": 200,
+    "maxCellChars": 300,
+    "maxResultChars": 40000
+  },
+
+  "summary": {
+    "maxBuckets": 500
+  },
+
+  "events": {
+    "defaultLimit": 50,
+    "maxLimit": 200
+  },
+
+  "telegram": {
+    "maxChars": 3500
+  },
+
+  "notes": {
+    "maxBytes": 16384
+  }
+}

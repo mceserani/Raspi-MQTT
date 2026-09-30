@@ -2,55 +2,33 @@
 
 > Documento di lavoro per riprendere il progetto in sessioni successive.
 > Stato: **implementazione in corso sul ramo `feat/agente`** — vedi §9 per l'avanzamento.
-> Ultimo aggiornamento: 2026-09-28
+> Ultimo aggiornamento: 2026-09-30
 
 ---
 
-## ▶ Punto di ripartenza (aggiornato 2026-09-28)
+## ▶ Punto di ripartenza (aggiornato 2026-09-30)
 
-**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta) e fase 1 (supervisore). Sul PC: 47 test verdi (`npm test`) e prova completa con simulatore (interblocco scattato e batteria ferma in 1 s). **Niente è ancora stato provato sul Raspberry.**
+**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`) e fase 2 (server MCP). Sul PC: 67 test verdi e prova completa con simulatore, bridge, supervisore e server MCP (comandi eseguiti, rifiutati, audit e messaggi arrivati al supervisore).
 
-### Da fare sul Pi (Matteo), in quest'ordine
+**Sul Pi (30/09):** passi 1–6 della fase 1 completati (prerequisiti, token Claude, bot Telegram con chat_id, supervisore installato, verifiche MariaDB). Il supervisore gira in osservazione **fino a venerdì mattina (2026-10-02)**: annotare eventi falsi o mancanti, segno della corrente in scarica, comportamento del registro 405.
 
-1. **Aggiornare il codice**
+### Da fare sul Pi per la fase 2
+
+1. Aggiornare e installare il server MCP (dettagli in [mcp.md](mcp.md)):
    ```bash
-   cd ~/Raspi-MQTT && git fetch origin && git checkout feat/agente && git pull
-   uname -m        # deve dare aarch64, altrimenti Claude Code non si installa
+   cd ~/Raspi-MQTT && git pull && npm install
+   sudo systemctl restart raspi-supervisor
+   ./setup-agent-mcp.sh
    ```
-2. **Prerequisiti dell'agente** (utente Linux `raspi-agent`, utente MariaDB `agent_ro` read-only, `agent.env`, Claude Code)
-   ```bash
-   ./setup-agent-prereqs.sh --install-claude
-   ```
-   Controllare che stampi `[✓] agent_ro is read-only` e la versione di Claude Code.
-3. **Token dell'abbonamento**: sul PC, in un terminale normale, `claude setup-token` → login nel browser → copiare il token `sk-ant-oat…` (non incollarlo in chat). Sul Pi:
-   ```bash
-   sudo nano /home/raspi-agent/.config/raspi-agent/agent.env   # incollare dopo CLAUDE_CODE_OAUTH_TOKEN=
-   sudo -u raspi-agent -H bash -c 'set -a; . ~/.config/raspi-agent/agent.env; cd ~/workspace; ~/.local/bin/claude -p "Rispondi solo OK" --model haiku'
-   ```
-   Deve rispondere `OK`.
-4. **Bot Telegram**: in Telegram, @BotFather → `/newbot` → copiare il token in `.env` come `TELEGRAM_BOT_TOKEN=…`. Lasciare `TELEGRAM_CHAT_ID=` vuoto per ora.
-5. **Installare il supervisore**
-   ```bash
-   ./setup-supervisor-service.sh
-   journalctl -u raspi-supervisor -f
-   ```
-   Scrivere un messaggio al bot: risponde con il chat_id → metterlo in `.env` come `TELEGRAM_CHAT_ID=…` → `sudo systemctl restart raspi-supervisor`. Poi provare `/status` e `/eventi`.
-6. **Verificare MariaDB** (le query del supervisore non sono state provate su un server reale):
-   ```sql
-   USE sensor_data;
-   SHOW TABLES LIKE 'summary%';  SHOW TABLES LIKE 'supervisor%';
-   SELECT created_at, severity, message, resolved_at FROM supervisor_events ORDER BY id DESC LIMIT 20;
-   SELECT * FROM summary_minute ORDER BY bucket_start DESC LIMIT 14;
-   SELECT * FROM supervisor_state;
-   ```
-   Nel journal non devono comparire `[ERROR] Event write failed` né `[ERROR] Aggregation failed`.
-7. **Osservare qualche giorno** e annotare: eventi falsi o mancanti (soglie in `config/supervisor.json`, da tarare — in particolare VOC/NOx: ppb reali o indice?), segno della corrente in scarica (ipotesi: negativa), se il registro 405 distingue i tipi di batteria.
+   Deve stampare `[✓] MCP server working`.
+2. Provare gli strumenti senza token con `mcp-call.js` (`get_live_status`, `get_summary`, `get_events`, `query_readonly`), poi una volta con Claude (comando stampato dallo script).
+3. Provare `send_telegram` e un comando batteria innocuo (per esempio `set_current_ma` a batteria ferma): su Telegram devono arrivare il messaggio 🤖 e la notifica di audit.
 
 Riportare in sessione eventuali errori (senza token/password).
 
 ### Prossimo passo di sviluppo
 
-**Fase 2 — server MCP** (§5.5): tool di lettura (`get_live_status` da `supervisor/status`, `get_summary`, `get_events`, `get_service_health`, `query_readonly` con `agent_ro`, note) e poi `send_battery_command` validato sul profilo, rifiutato se l'interblocco è scattato. Per `send_telegram` l'agente passerà dal supervisore (topic MQTT dedicato), che è l'unico a conoscere il token del bot. Documentazione operativa del supervisore: [supervisore.md](supervisore.md).
+**Fase 3a — lanciatore dell'agente**: servizio che gira come `raspi-agent`, riceve i lavori dal supervisore (topic MQTT), li mette in coda (una esecuzione alla volta), rispetta il budget giornaliero e lancia `claude -p` con `--mcp-config`, `--strict-mcp-config` e solo gli strumenti `mcp__raspi__*`. Poi 3b (`CLAUDE.md`, triage Haiku → Sonnet, stato `agent_status` degli eventi) e 3c (report, `/report`, `/ask`). Domanda aperta da chiudere prima della 3c: orari dei report (§8, domanda 4).
 
 ---
 
@@ -307,8 +285,8 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 1d | Supervisore: aggregazioni minuto/ora | ✅ fatto |
 | 1e | Supervisore: Telegram in uscita + `/status`, `/stop`, `/eventi`, `/battery`, `/reset` | ✅ fatto (da provare con il bot reale) |
 | 1f | Supervisore: `raspi-supervisor.service` (`setup-supervisor-service.sh`) | ✅ fatto |
-| 2a | MCP: tool di lettura | ⏳ |
-| 2b | MCP: `send_battery_command` validato, `send_telegram`, audit | ⏳ |
+| 2a | MCP: tool di lettura (`get_live_status`, `get_service_health`, `get_summary`, `get_events`, `query_readonly`, note) | ✅ fatto (da provare sul Pi) |
+| 2b | MCP: `send_battery_command` validato, `send_telegram`, audit (`setup-agent-mcp.sh`) | ✅ fatto (da provare sul Pi) |
 | 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) | ⏳ |
 | 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet | ⏳ |
 | 3c | Agente: report giornaliero/settimanale, `/report`, `/ask` | ⏳ |
@@ -322,4 +300,5 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 - **Bug del segno di `labsens`:** il codice esistente non si tocca; il supervisore reinterpreta i valori come interi con segno (valori ≥ 327,68 per le grandezze /100 → negativi). Il simulatore riproduce il bug di proposito.
 - **Convenzione corrente (ipotesi da verificare sul banco):** corrente misurata positiva in carica, negativa in scarica.
 - **Supervisore:** documentazione operativa in [supervisore.md](supervisore.md). Lo stop dell'interblocco e di `/stop` va direttamente su `command/dispatch` (non dipende dal bridge). Lo stato è pubblicato su `supervisor/status` (retained) per il server MCP.
+- **Server MCP:** documentazione in [mcp.md](mcp.md). I comandi sono validati contro lo stato pubblicato dal supervisore (unica fonte del profilo attivo e del latch); i limiti dei comandi (`commandBounds`) sono quelli del profilo ristretti dei margini di `config/agent.json`, così un setpoint accettato non fa scattare l'interblocco. Il server è installato in `/opt/raspi-agent` come root: l'agente non può modificarlo.
 - **Separazione utenti:** il supervisore gira come l'utente dei servizi esistenti; l'agente come `raspi-agent`. Il supervisore non può lanciare processi come un altro utente senza sudo, quindi il lanciatore (3a) sarà un servizio separato che gira come `raspi-agent` e riceve i lavori dal supervisore.

@@ -1,0 +1,263 @@
+import { checkReadonlySql, compactRows, formatLocal, parseTime, roundValue } from './format.js';
+import { AGENT_COMMANDS, commandBounds, statusAgeSeconds, validateBatteryCommand } from './validation.js';
+
+// Tool implementations of the MCP server, independent of the MCP transport
+// (server.js registers them). Results are small JSON objects; a thrown
+// ToolError becomes an error result the agent can read and act on.
+
+export class ToolError extends Error {}
+
+export const METRICS = {
+	lab: ['temperature', 'humidity', 'pm2_5', 'pm10', 'voc', 'nox', 'ntc_temperature'],
+	battery: ['voltage_measured_mv', 'current_measured_ma']
+};
+
+const RUN_STATES = { 0: 'ferma', 1: 'carica', 2: 'scarica' };
+const SEVERITIES = ['info', 'warning', 'critical'];
+const GRANULARITY_MS = { minute: 60000, hour: 3600000, day: 86400000 };
+
+export function createTools({ bus, db, notes, config, now = () => Date.now() }) {
+	const commandTimes = [];
+
+	async function currentStatus() {
+		const { status } = await bus.getStatus(config.status.waitSeconds);
+		return status;
+	}
+
+	function requireSupervisor(status) {
+		if (!status || status.online === false) {
+			throw new ToolError('supervisore non raggiungibile (nessuno stato su MQTT o servizio fermo)');
+		}
+		const age = statusAgeSeconds(status, now());
+		if (age > config.status.maxAgeSeconds) {
+			throw new ToolError(`stato del supervisore vecchio di ${Math.round(age)} s: il supervisore potrebbe essere bloccato`);
+		}
+		return age;
+	}
+
+	async function audit(record) {
+		try {
+			await bus.publishToSupervisor('audit', record);
+		} catch {
+			// The command result is returned anyway; the missing audit is reported in it
+			record.auditFailed = true;
+		}
+	}
+
+	return {
+		async get_live_status() {
+			const status = await currentStatus();
+			const age = requireSupervisor(status);
+
+			const lab = {};
+			for (const [sensor, entry] of Object.entries(status.live?.lab ?? {})) {
+				lab[sensor] = { value: roundValue(entry.value, 2), ageS: Math.round(entry.ageSeconds + age), ...(entry.invalid ? { invalid: true } : {}) };
+			}
+
+			const b = status.live?.battery;
+			const battery = b ? {
+				state: RUN_STATES[b.runState] ?? b.runState,
+				voltageMv: b.voltageMeasuredMv,
+				currentMa: b.currentMeasuredMa,
+				setpointVoltageMv: b.voltageSetpointMv,
+				setpointCurrentMa: b.currentSetpointMa,
+				batteryType: b.batteryType,
+				ageS: Math.round(b.ageSeconds + age)
+			} : null;
+
+			const profile = status.profile ?? {};
+			return {
+				at: formatLocal(now()),
+				lab,
+				battery,
+				profile: {
+					name: profile.name,
+					source: profile.source,
+					usable: Boolean(profile.usable),
+					...(profile.usable ? { limits: profile.limits, commandBounds: commandBounds(profile.limits, config.commands) } : { reasons: profile.reasons })
+				},
+				interlock: status.interlock?.latched
+					? { state: 'scattato', at: formatLocal(status.interlock.latched.at), reasons: status.interlock.latched.reasons }
+					: { state: status.interlock?.armed ? 'armato' : 'inattivo' },
+				openEvents: (status.openEvents ?? []).map((e) => ({ severity: e.severity, message: e.message, since: formatLocal(e.openedAt, { seconds: false }) }))
+			};
+		},
+
+		async get_service_health() {
+			const status = await currentStatus();
+			const age = requireSupervisor(status);
+			const services = {};
+			for (const [unit, service] of Object.entries(status.health?.services ?? {})) {
+				services[unit] = { state: service.state, errors: service.errors, warnings: service.warnings };
+			}
+			return {
+				supervisor: { online: true, statusAgeS: Math.round(age), uptimeH: roundValue((status.uptimeSeconds ?? 0) / 3600, 1) },
+				database: status.databaseReady ? 'ok' : 'non raggiungibile dal supervisore',
+				mqtt: bus.connected ? 'ok' : 'non connesso',
+				services,
+				checkedAt: status.health?.at ? formatLocal(status.health.at) : null
+			};
+		},
+
+		async get_summary({ from = '-24h', to = 'now', granularity = 'auto', source, metrics }) {
+			const t = now();
+			const fromMs = parseTime(from, t);
+			const toMs = parseTime(to, t);
+			if (!(fromMs < toMs)) throw new ToolError('"from" deve precedere "to"');
+
+			const known = source ? METRICS[source] : [...METRICS.lab, ...METRICS.battery];
+			if (!known) throw new ToolError(`source non valida: ${source} (lab o battery)`);
+			const selected = metrics?.length ? metrics : known;
+			const unknown = selected.filter((m) => !known.includes(m));
+			if (unknown.length) throw new ToolError(`metriche sconosciute: ${unknown.join(', ')}. Disponibili: ${known.join(', ')}`);
+
+			const maxPoints = config.summary.maxBuckets;
+			const pointsFor = (g) => Math.ceil((toMs - fromMs) / GRANULARITY_MS[g]) * selected.length;
+			let chosen = granularity;
+			if (chosen === 'auto') {
+				chosen = ['minute', 'hour', 'day'].find((g) => pointsFor(g) <= maxPoints) ?? 'day';
+			}
+			if (!GRANULARITY_MS[chosen]) throw new ToolError(`granularity non valida: ${granularity}`);
+			if (pointsFor(chosen) > maxPoints) {
+				throw new ToolError(`troppi punti (${pointsFor(chosen)} > ${maxPoints}): riduci l'intervallo o le metriche, oppure usa una granularità più ampia`);
+			}
+
+			const filters = ['bucket_start >= ?', 'bucket_start < ?', `metric IN (${selected.map(() => '?').join(', ')})`];
+			const params = [new Date(fromMs), new Date(toMs), ...selected];
+			if (source) {
+				filters.push('source = ?');
+				params.push(source);
+			}
+			const where = filters.join(' AND ');
+
+			// Days come from the hourly table: sample-weighted mean, p95 = worst hourly p95
+			const sql = chosen === 'day'
+				? `SELECT DATE(bucket_start) AS bucket, source, metric, SUM(samples) AS samples,
+						SUM(avg_value * samples) / NULLIF(SUM(samples), 0) AS avg_value, MIN(min_value) AS min_value,
+						MAX(max_value) AS max_value, MAX(p95_value) AS p95_value, MAX(max_gap_s) AS max_gap_s
+					FROM summary_hour WHERE ${where} GROUP BY DATE(bucket_start), source, metric ORDER BY source, metric, bucket`
+				: `SELECT bucket_start AS bucket, source, metric, samples, avg_value, min_value, max_value, p95_value, max_gap_s
+					FROM summary_${chosen} WHERE ${where} ORDER BY source, metric, bucket`;
+
+			const rows = await db.query(sql, params, { rowLimit: maxPoints + 1 });
+			const series = {};
+			for (const row of rows) {
+				const key = `${row.source}.${row.metric}`;
+				const bucket = chosen === 'day' ? formatLocal(row.bucket).slice(0, 10) : formatLocal(row.bucket, { seconds: false });
+				(series[key] ??= []).push([bucket, Number(row.samples), roundValue(row.avg_value), roundValue(row.min_value), roundValue(row.max_value), roundValue(row.p95_value), roundValue(row.max_gap_s, 0)]);
+			}
+
+			return {
+				granularity: chosen,
+				from: formatLocal(fromMs, { seconds: false }),
+				to: formatLocal(toMs, { seconds: false }),
+				columns: ['bucket', 'samples', 'avg', 'min', 'max', 'p95', 'maxGapS'],
+				series,
+				...(rows.length === 0 ? { note: 'nessun riassunto nell\'intervallo: le aggregazioni partono dall\'avvio del supervisore (backfill 24 h)' } : {})
+			};
+		},
+
+		async get_events({ since = '-24h', minSeverity = 'warning', openOnly = false, source, limit, includeDetails = false }) {
+			const sinceMs = parseTime(since, now());
+			const rank = SEVERITIES.indexOf(minSeverity);
+			if (rank < 0) throw new ToolError(`minSeverity non valida: ${minSeverity}`);
+			const max = Math.min(limit ?? config.events.defaultLimit, config.events.maxLimit);
+
+			const filters = [openOnly ? 'resolved_at IS NULL' : '(created_at >= ? OR resolved_at IS NULL)', `peak_severity IN (${SEVERITIES.slice(rank).map(() => '?').join(', ')})`];
+			const params = openOnly ? [] : [new Date(sinceMs)];
+			params.push(...SEVERITIES.slice(rank));
+			if (source) {
+				filters.push('source = ?');
+				params.push(source);
+			}
+
+			const rows = await db.query(
+				`SELECT id, created_at AS opened, resolved_at AS resolved, source, type, severity, peak_severity AS peak, message, agent_status${includeDetails ? ', details' : ''}
+				FROM supervisor_events WHERE ${filters.join(' AND ')} ORDER BY created_at DESC LIMIT ${Number(max)}`,
+				params,
+				{ rowLimit: max }
+			);
+			return compactRows(rows, { ...config.queries, maxRows: max });
+		},
+
+		async query_readonly({ sql }) {
+			const check = checkReadonlySql(sql);
+			if (!check.ok) throw new ToolError(`query rifiutata: ${check.reason}`);
+			try {
+				const rows = await db.query(check.sql);
+				const list = Array.isArray(rows) ? rows : [rows];
+				return compactRows(list, config.queries);
+			} catch (error) {
+				throw new ToolError(`errore MariaDB: ${error.sqlMessage ?? error.message}`);
+			}
+		},
+
+		async read_notes({ name }) {
+			if (!name) return { notes: await notes.list() };
+			const content = await notes.read(name);
+			if (content === null) throw new ToolError(`nota "${name}" inesistente`);
+			return { name, content };
+		},
+
+		async write_notes({ name, content, mode = 'append' }) {
+			try {
+				return await notes.write(name, content, mode);
+			} catch (error) {
+				throw new ToolError(error.message);
+			}
+		},
+
+		async send_telegram({ text, level = 'info' }) {
+			const status = await currentStatus();
+			requireSupervisor(status);
+			const body = text.trim();
+			if (!body) throw new ToolError('messaggio vuoto');
+			if (body.length > config.telegram.maxChars) {
+				throw new ToolError(`messaggio troppo lungo (${body.length} > ${config.telegram.maxChars} caratteri): riassumilo`);
+			}
+			await bus.publishToSupervisor('telegram', { text: body, level });
+			return { delivered: 'consegnato al supervisore per l\'invio' };
+		},
+
+		async send_battery_command({ command, value, reason }) {
+			if (!AGENT_COMMANDS.includes(command)) throw new ToolError(`comando non consentito: ${command}`);
+			const t = now();
+			while (commandTimes.length && commandTimes[0] < t - 60000) commandTimes.shift();
+			const isStop = command === 'set_run_state' && value === 0;
+			if (!isStop && commandTimes.length >= config.commands.maxPerMinute) {
+				throw new ToolError(`limite di ${config.commands.maxPerMinute} comandi al minuto raggiunto`);
+			}
+
+			const status = await currentStatus();
+			const check = validateBatteryCommand({ command, value }, { status, now: t, config });
+			const record = { command, value, reason, source: 'agent' };
+			if (!check.ok) {
+				await audit({ ...record, outcome: 'rejected', message: check.reason });
+				return { executed: false, rejected: check.reason };
+			}
+
+			commandTimes.push(t);
+			let result;
+			try {
+				result = await bus.sendBatteryCommand({ command, value, reason }, config.commands.ackTimeoutSeconds);
+			} catch (error) {
+				await audit({ ...record, outcome: 'error', message: error.message });
+				throw new ToolError(`invio non riuscito: ${error.message}`);
+			}
+
+			const outcome = result.timeout ? 'timeout' : result.ack.status === 'ok' ? 'ok' : 'error';
+			const message = result.timeout
+				? `nessuna conferma entro ${config.commands.ackTimeoutSeconds} s (bridge o servizio batteria fermi?)`
+				: result.ack.message;
+			const auditRecord = { ...record, commandId: result.commandId, outcome, message };
+			await audit(auditRecord);
+			return {
+				executed: outcome === 'ok',
+				outcome,
+				message,
+				commandId: result.commandId,
+				...(auditRecord.auditFailed ? { warning: 'audit non registrato dal supervisore' } : {})
+			};
+		}
+	};
+}

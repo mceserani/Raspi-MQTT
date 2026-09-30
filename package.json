@@ -11,16 +11,19 @@
     "test": "node --test \"test/**/*.test.js\"",
     "simulator": "node --env-file-if-exists=.env tools/simulator.js",
     "dev-broker": "node tools/dev-broker.js",
-    "supervisor": "node --env-file=.env supervisor/index.js"
+    "supervisor": "node --env-file=.env supervisor/index.js",
+    "mcp-call": "node --env-file-if-exists=.env tools/mcp-call.js"
   },
   "author": "Matteo Ceserani",
   "license": "MIT",
   "description": "MQTT publisher for Modbus sensors with MariaDB storage",
   "type": "module",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "mariadb": "^3.4.2",
     "modbus-serial": "^8.0.0",
-    "mqtt": "^5.3.0"
+    "mqtt": "^5.3.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "aedes": "^1.2.0"

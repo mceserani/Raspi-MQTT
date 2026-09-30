@@ -88,7 +88,8 @@
   "telegram": {
     "notifyMinSeverity": "warning",
     "notifyResolved": true,
-    "maxMessagesPerMinute": 10
+    "maxMessagesPerMinute": 10,
+    "agentMaxMessagesPerHour": 30
   },
 
   "statusPublishSeconds": 5
