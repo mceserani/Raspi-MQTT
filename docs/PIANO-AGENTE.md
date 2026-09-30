@@ -16,16 +16,9 @@
 
 **Fase 3a verificata sul Pi (30/09):** lanciatore `raspi-agent-launcher` e `/ask` funzionano. Budget: **10 esecuzioni al giorno, di cui al massimo 5 con Sonnet**. Documentazione: [lanciatore.md](lanciatore.md).
 
-**Fase 3b fatta e pubblicata (30/09), da provare sul Pi:** `CLAUDE.md` dell'agente, triage automatico degli eventi (Haiku, a gruppi, al massimo uno ogni 60 min, 10 min con un critical), indagini con Sonnet su richiesta del triage (max 2 al giorno), riserva di budget per `/ask` (il triage lascia sempre 3 esecuzioni libere), `agent_status` aggiornato dal supervisore.
+**Fase 3b verificata sul Pi (30/09):** `CLAUDE.md` dell'agente, triage automatico degli eventi (Haiku, a gruppi, al massimo uno ogni 60 min, 10 min con un critical), indagini con Sonnet su richiesta del triage (max 2 al giorno), riserva di budget per `/ask` (il triage lascia sempre 3 esecuzioni libere), `agent_status` aggiornato dal supervisore. Il triage funziona e il contatore delle esecuzioni sale. Attenzione: dopo `./setup-agent-mcp.sh` va **sempre** riavviato il lanciatore (`sudo systemctl restart raspi-agent-launcher`), che legge `config/agent.json` solo all'avvio: senza riavvio i lavori `triage` venivano rifiutati come tipo sconosciuto. Possibile miglioramento (proposto, non fatto): far riavviare il lanciatore allo script.
 
-### Da fare sul Pi per la fase 3b
-
-```bash
-cd ~/Raspi-MQTT && git pull && npm install
-sudo systemctl restart raspi-supervisor
-./setup-agent-mcp.sh && sudo systemctl restart raspi-agent-launcher
-```
-Poi controllare: `journalctl -u raspi-supervisor | grep TRIAGE` (lavoro inviato e concluso), `journalctl -u raspi-agent-launcher -f`, la colonna `agent_status` in `supervisor_events`, e se su Telegram arrivano messaggi 🤖 sensati (o nessuno, se gli eventi erano rumore). Annotare i triage inutili o sbagliati: servono a migliorare `CLAUDE.md` e le soglie.
+Nei prossimi giorni: annotare i triage inutili o sbagliati (servono a migliorare `CLAUDE.md` e le soglie) e, da venerdì 2026-10-02, riportare le osservazioni del supervisore (eventi falsi o mancanti, segno della corrente in scarica, registro 405).
 
 ### Prossimo passo di sviluppo
 
@@ -292,7 +285,7 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 2a | MCP: tool di lettura (`get_live_status`, `get_service_health`, `get_summary`, `get_events`, `query_readonly`, note) | ✅ verificato sul Pi |
 | 2b | MCP: `send_battery_command` validato, `send_telegram`, audit (`setup-agent-mcp.sh`) | ✅ verificato sul Pi |
 | 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) + `/ask` | ✅ verificato sul Pi |
-| 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet, `agent_status` | ✅ fatto (da provare sul Pi) |
+| 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet, `agent_status` | ✅ verificato sul Pi |
 | 3c | Agente: report giornaliero/settimanale, `/report` | ⏳ |
 | 4a | `battery_cycles` + `get_battery_cycles` | ⏳ |
 | 4b | Procedure batteria (macchina a stati) | ⏳ |
