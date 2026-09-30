@@ -17,7 +17,8 @@ export class Bus {
 			request: `${env.batteryTopic}/command/request`,
 			ack: `${env.batteryTopic}/command/ack`,
 			telegram: `${env.agentTopic}/telegram`,
-			audit: `${env.agentTopic}/audit`
+			audit: `${env.agentTopic}/audit`,
+			escalate: `${env.agentTopic}/escalate`
 		};
 	}
 

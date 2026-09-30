@@ -13,6 +13,7 @@ import { EventManager } from './events.js';
 import { HealthMonitor } from './health.js';
 import { Interlock } from './interlock.js';
 import { RuleEngine } from './rules.js';
+import { Triage } from './triage.js';
 import { Notifier, TelegramBot } from './telegram.js';
 
 const env = loadEnvConfig();
@@ -39,7 +40,14 @@ const eventStore = new EventStore(db);
 const bot = new TelegramBot(env.telegram);
 const notifier = new Notifier({ bot, config: config.telegram });
 const events = new EventManager({ store: eventStore, notifier });
-const agentLink = new AgentLink({ bot, events, config: config.telegram });
+const triage = new Triage({
+	db,
+	state,
+	config: config.triage ?? { enabled: false },
+	publishJob: (job) => client.publishAsync(`${env.agentTopic}/jobs`, JSON.stringify(job), { qos: 1 }),
+	launcherOnline: () => Boolean(agentLink.launcher?.online) && client.connected
+});
+const agentLink = new AgentLink({ bot, events, config: config.telegram, triage });
 
 const engine = new RuleEngine(config, { profileProvider: activeProfile });
 const interlock = new Interlock(config.interlock, {
@@ -225,7 +233,9 @@ const timers = [
 
 	setInterval(async () => engine.setHealth(await health.check()), config.health.intervalSeconds * 1000),
 
-	setInterval(() => aggregator.run(), config.aggregation.intervalSeconds * 1000)
+	setInterval(() => aggregator.run(), config.aggregation.intervalSeconds * 1000),
+
+	setInterval(() => triage.tick().catch((error) => console.error('[ERROR] Triage failed:', error.message)), (config.triage?.checkSeconds ?? 60) * 1000)
 ];
 engine.setHealth(await health.check());
 

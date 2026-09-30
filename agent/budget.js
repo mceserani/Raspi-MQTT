@@ -10,10 +10,15 @@ export function localDay(ms) {
 }
 
 // Chooses the model for a job: a Sonnet job becomes Haiku when the Sonnet
-// quota is used up. Returns { model, downgraded } or { refused: reason }.
-export function planRun(counts, requestedModel, limits) {
+// quota is used up. reserve = runs that must stay free for other jobs (the
+// automatic ones leave room for the user's questions).
+// Returns { model, downgraded } or { refused: reason }.
+export function planRun(counts, requestedModel, limits, reserve = 0) {
 	if (counts.total >= limits.maxRunsPerDay) {
 		return { refused: `budget giornaliero esaurito (${limits.maxRunsPerDay} esecuzioni)` };
+	}
+	if (limits.maxRunsPerDay - counts.total <= reserve) {
+		return { refused: `restano ${limits.maxRunsPerDay - counts.total} esecuzioni, riservate alle domande dell'utente` };
 	}
 	if (requestedModel === 'sonnet' && counts.sonnet >= limits.maxSonnetRunsPerDay) {
 		return { model: 'haiku', downgraded: true };
@@ -44,8 +49,8 @@ export class Budget {
 		return this.state;
 	}
 
-	plan(requestedModel) {
-		return planRun(this.counts(), requestedModel, this.limits);
+	plan(requestedModel, reserve = 0) {
+		return planRun(this.counts(), requestedModel, this.limits, reserve);
 	}
 
 	async consume(model) {

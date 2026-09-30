@@ -39,7 +39,7 @@ export class Launcher {
 	}
 
 	async finish(job, outcome) {
-		await this.publish('results', { jobId: job.jobId, kind: job.kind, requestedBy: job.requestedBy ?? null, ...outcome });
+		await this.publish('results', { jobId: job.jobId, kind: job.kind, requestedBy: job.requestedBy ?? null, eventIds: job.eventIds ?? null, ...outcome });
 	}
 
 	async submit(rawJob) {
@@ -78,7 +78,7 @@ export class Launcher {
 
 	async execute(job) {
 		const jobConfig = this.config.jobs[job.kind];
-		const plan = this.budget.plan(jobConfig.model);
+		const plan = this.budget.plan(jobConfig.model, jobConfig.reserve ?? 0);
 		if (plan.refused) {
 			this.log.warn(`[WARN] Job ${job.jobId} refused: ${plan.refused}`);
 			await this.finish(job, { status: 'refused', error: plan.refused });

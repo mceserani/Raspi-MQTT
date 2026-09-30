@@ -219,6 +219,14 @@ export function createTools({ bus, db, notes, config, now = () => Date.now() }) 
 			return { delivered: 'consegnato al supervisore per l\'invio' };
 		},
 
+		async request_escalation({ eventIds, summary }) {
+			const status = await currentStatus();
+			requireSupervisor(status);
+			if (!summary?.trim()) throw new ToolError('sintesi mancante');
+			await bus.publishToSupervisor('escalate', { eventIds, summary: summary.trim() });
+			return { requested: 'indagine chiesta al supervisore: partirà con Sonnet se il budget lo consente' };
+		},
+
 		async send_battery_command({ command, value, reason }) {
 			if (!AGENT_COMMANDS.includes(command)) throw new ToolError(`comando non consentito: ${command}`);
 			const t = now();

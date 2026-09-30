@@ -71,7 +71,11 @@ EOF
 sudo chown "root:${AGENT_USER}" "${MCP_CONFIG}"
 sudo chmod 640 "${MCP_CONFIG}"
 
-# ─── 3. Smoke test as the agent user (0 tokens) ────────────────────────────
+# ─── 3. Agent instructions (root-owned: the agent cannot rewrite them) ─────
+echo "[+] Installing ${AGENT_HOME}/workspace/CLAUDE.md"
+sudo install -m 644 -o root -g "${AGENT_USER}" agent/workspace/CLAUDE.md "${AGENT_HOME}/workspace/CLAUDE.md"
+
+# ─── 4. Smoke test as the agent user (0 tokens) ────────────────────────────
 echo "[?] Calling get_service_health as ${AGENT_USER}..."
 if sudo -u "${AGENT_USER}" -H "${NODE_BIN}" --env-file="${AGENT_ENV}" "${INSTALL_DIR}/tools/mcp-call.js" get_service_health; then
 	echo "[✓] MCP server working"

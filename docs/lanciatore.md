@@ -19,7 +19,7 @@ Log: `journalctl -u raspi-agent-launcher -f`.
 
 ## Come funziona
 
-1. Il supervisore pubblica un lavoro su `supervisor/agent/jobs` (`{ jobId, kind, prompt, requestedBy, replyTelegram }`). Oggi lo fa `/ask`; nelle fasi 3b–3c anche il triage degli eventi e i report.
+1. Il supervisore pubblica un lavoro su `supervisor/agent/jobs` (`{ jobId, kind, prompt, requestedBy, replyTelegram, eventIds }`): per `/ask`, per il triage degli eventi e per le indagini (vedi [supervisore.md](supervisore.md#triage-degli-eventi)); in 3c anche i report.
 2. Il lanciatore lo mette in coda (massimo `maxQueue` in attesa) ed esegue **un lavoro alla volta**.
 3. Controlla il **budget giornaliero**. Se è esaurito, rifiuta il lavoro e lo dice all'utente. Se è esaurita solo la quota Sonnet, il lavoro passa a Haiku e la risposta lo segnala.
 4. Lancia `claude -p` nella cartella `~/workspace` con:
@@ -44,9 +44,20 @@ Sezione `launcher` di [`config/agent.json`](../config/agent.json):
 | `maxQueue` | 5 | Lavori in attesa al massimo |
 | `timeoutSeconds` | 300 | Durata massima di un'esecuzione |
 | `maxPromptChars` / `maxReplyChars` | 2000 / 3000 | Lunghezza massima di domanda e risposta |
-| `systemPrompt` | | Istruzioni aggiunte a ogni esecuzione (in 3b arriverà `CLAUDE.md`) |
-| `jobs.<tipo>` | | `model`, `maxTurns`, `tools` (strumenti MCP ammessi) |
+| `systemPrompt` | | Breve istruzione aggiunta a ogni esecuzione (il resto è in `CLAUDE.md`) |
+| `jobs.<tipo>` | | `model`, `maxTurns`, `reserve`, `tools` (strumenti MCP ammessi) |
 
-Tipi di lavoro attuali: `ask` (Sonnet, solo strumenti di lettura: da `/ask` l'agente **non** può comandare la batteria né scrivere note) e `test` (Haiku, solo `get_live_status`).
+Tipi di lavoro:
+
+| Tipo | Chi lo lancia | Modello | Riserva | Strumenti |
+|---|---|---|---|---|
+| `ask` | `/ask` da Telegram | Sonnet | 0 | solo lettura (niente comandi batteria né note) |
+| `triage` | supervisore, sugli eventi warning/critical | Haiku | 3 | lettura, note, `send_telegram`, `request_escalation` |
+| `investigate` | supervisore, su `request_escalation` del triage | Sonnet | 2 | lettura, `query_readonly`, note, `send_telegram` |
+| `test` | manuale | Haiku | 0 | `get_live_status` |
+
+La **riserva** è il numero di esecuzioni che un lavoro automatico deve lasciare libere: con 10 al giorno il triage si ferma a 7 usate e le indagini a 8, così restano sempre esecuzioni per `/ask`. Nessun lavoro automatico può comandare la batteria; per permetterlo in futuro basta aggiungere `send_battery_command` agli strumenti del tipo di lavoro.
+
+Le istruzioni dell'agente sono in [`agent/workspace/CLAUDE.md`](../agent/workspace/CLAUDE.md), installato da `setup-agent-mcp.sh` in `~raspi-agent/workspace/CLAUDE.md` (proprietà di root: l'agente non può riscriverle). Claude Code lo carica a ogni esecuzione.
 
 Dopo una modifica: `./setup-agent-mcp.sh` e `sudo systemctl restart raspi-agent-launcher`. Il conteggio del giorno è in `~raspi-agent/.local/state/raspi-agent/budget.json`.

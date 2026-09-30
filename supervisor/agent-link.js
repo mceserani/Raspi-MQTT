@@ -19,8 +19,9 @@ export function formatAudit(record) {
 }
 
 export class AgentLink {
-	constructor({ bot, events, config, log = console, now = () => Date.now() }) {
+	constructor({ bot, events, config, triage = null, log = console, now = () => Date.now() }) {
 		this.bot = bot;
+		this.triage = triage;
 		this.events = events;
 		this.maxPerHour = config.agentMaxMessagesPerHour;
 		this.log = log;
@@ -34,9 +35,14 @@ export class AgentLink {
 		if (kind === 'telegram') this.onTelegram(payload);
 		else if (kind === 'audit') this.onAudit(payload);
 		else if (kind === 'launcher') this.launcher = payload;
-		else if (kind === 'results' && payload?.status && payload.status !== 'ok') {
-			this.log.warn(`[WARN] Agent job ${payload.jobId} ${payload.status}: ${payload.error ?? ''}`);
-		}
+		else if (kind === 'results') this.onResult(payload);
+		else if (kind === 'escalate') this.triage?.onEscalate(payload).catch((error) => this.log.error('[ERROR] Escalation failed:', error.message));
+	}
+
+	onResult(result) {
+		if (!result?.jobId) return;
+		if (result.status !== 'ok') this.log.warn(`[WARN] Agent job ${result.jobId} ${result.status}: ${result.error ?? ''}`);
+		this.triage?.onResult(result).catch((error) => this.log.error('[ERROR] Triage result failed:', error.message));
 	}
 
 	onTelegram({ text, level }) {

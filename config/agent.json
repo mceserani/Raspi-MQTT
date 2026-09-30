@@ -47,12 +47,24 @@
     "timeoutSeconds": 300,
     "maxPromptChars": 2000,
     "maxReplyChars": 3000,
-    "systemPrompt": "Sei l'agente di monitoraggio del laboratorio (sensori ambientali e banco batteria) su un Raspberry Pi. Lavori solo con gli strumenti MCP raspi: non inventare dati, se uno strumento fallisce dillo. Rispondi in italiano, in testo semplice (niente Markdown), in modo conciso: la risposta finale viene inviata all'utente su Telegram.",
+    "systemPrompt": "Sei l'agente di monitoraggio del laboratorio: segui le istruzioni di CLAUDE.md nella cartella di lavoro. Rispondi in italiano, in testo semplice, senza Markdown.",
     "jobs": {
       "ask": {
         "model": "sonnet",
         "maxTurns": 12,
         "tools": ["get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes"]
+      },
+      "triage": {
+        "model": "haiku",
+        "maxTurns": 10,
+        "reserve": 3,
+        "tools": ["get_live_status", "get_service_health", "get_summary", "get_events", "read_notes", "write_notes", "send_telegram", "request_escalation"]
+      },
+      "investigate": {
+        "model": "sonnet",
+        "maxTurns": 20,
+        "reserve": 2,
+        "tools": ["get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "write_notes", "send_telegram"]
       },
       "test": {
         "model": "haiku",

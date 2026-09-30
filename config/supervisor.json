@@ -92,5 +92,17 @@
     "agentMaxMessagesPerHour": 30
   },
 
+  "triage": {
+    "$comment": "Eventi warning/critical passati all'agente (Haiku) a gruppi. settleSeconds: età minima di un evento (quelli brevissimi arrivano già rientrati). Tra un triage e l'altro almeno minGapMinutes (criticalMinGapMinutes se c'è un critical). Il budget dell'agente è in config/agent.json.",
+    "enabled": true,
+    "checkSeconds": 60,
+    "settleSeconds": 120,
+    "lookbackHours": 6,
+    "maxEventsPerJob": 10,
+    "minGapMinutes": 60,
+    "criticalMinGapMinutes": 10,
+    "maxEscalationsPerDay": 2
+  },
+
   "statusPublishSeconds": 5
 }

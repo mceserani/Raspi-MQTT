@@ -14,20 +14,22 @@
 
 **Fase 2 verificata sul Pi (30/09):** `setup-agent-mcp.sh` installato, Claude (`claude -p` come `raspi-agent`) usa gli strumenti MCP, `get_summary`/`get_events`/`query_readonly` funzionano su MariaDB reale, `send_telegram` e un comando batteria con audit arrivano su Telegram.
 
-**Fase 3a fatta e pubblicata (30/09), da provare sul Pi:** lanciatore `raspi-agent-launcher` e comando `/ask`. Budget deciso: **10 esecuzioni al giorno, di cui al massimo 5 con Sonnet**. Documentazione: [lanciatore.md](lanciatore.md).
+**Fase 3a verificata sul Pi (30/09):** lanciatore `raspi-agent-launcher` e `/ask` funzionano. Budget: **10 esecuzioni al giorno, di cui al massimo 5 con Sonnet**. Documentazione: [lanciatore.md](lanciatore.md).
 
-### Da fare sul Pi per la fase 3a
+**Fase 3b fatta e pubblicata (30/09), da provare sul Pi:** `CLAUDE.md` dell'agente, triage automatico degli eventi (Haiku, a gruppi, al massimo uno ogni 60 min, 10 min con un critical), indagini con Sonnet su richiesta del triage (max 2 al giorno), riserva di budget per `/ask` (il triage lascia sempre 3 esecuzioni libere), `agent_status` aggiornato dal supervisore.
+
+### Da fare sul Pi per la fase 3b
 
 ```bash
 cd ~/Raspi-MQTT && git pull && npm install
 sudo systemctl restart raspi-supervisor
-./setup-agent-launcher.sh
+./setup-agent-mcp.sh && sudo systemctl restart raspi-agent-launcher
 ```
-Poi da Telegram: `/status` (riga `Agente: in attesa · oggi 0/10…`) e una domanda con `/ask`. Log: `journalctl -u raspi-agent-launcher -f`.
+Poi controllare: `journalctl -u raspi-supervisor | grep TRIAGE` (lavoro inviato e concluso), `journalctl -u raspi-agent-launcher -f`, la colonna `agent_status` in `supervisor_events`, e se su Telegram arrivano messaggi 🤖 sensati (o nessuno, se gli eventi erano rumore). Annotare i triage inutili o sbagliati: servono a migliorare `CLAUDE.md` e le soglie.
 
 ### Prossimo passo di sviluppo
 
-**Fase 3b — istruzioni e triage**: `CLAUDE.md` nella cartella di lavoro dell'agente (procedure, formato delle risposte, uso dei profili e delle note), triage degli eventi `pending` (il supervisore invia un lavoro Haiku per gli eventi warning/critical, con escalation a Sonnet) e aggiornamento di `agent_status` (serve uno strumento MCP per segnare gli eventi gestiti: l'utente `agent_ro` non può scrivere, lo farà il supervisore su richiesta MQTT). Poi 3c: report giornaliero e settimanale, `/report`. Domanda aperta prima della 3c: orari dei report (§8, domanda 4).
+**Fase 3c — report**: report giornaliero sintetico e settimanale approfondito (lavori programmati dal supervisore, con le note dell'agente per report a delta) e `/report` su richiesta. **Serve prima la risposta alla domanda 4 (§8): ora del report giornaliero e giorno del settimanale.** Da valutare anche il budget: con 10 esecuzioni al giorno, un report giornaliero ne usa una.
 
 ---
 
@@ -289,8 +291,8 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 1f | Supervisore: `raspi-supervisor.service` (`setup-supervisor-service.sh`) | ✅ fatto |
 | 2a | MCP: tool di lettura (`get_live_status`, `get_service_health`, `get_summary`, `get_events`, `query_readonly`, note) | ✅ verificato sul Pi |
 | 2b | MCP: `send_battery_command` validato, `send_telegram`, audit (`setup-agent-mcp.sh`) | ✅ verificato sul Pi |
-| 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) + `/ask` | ✅ fatto (da provare sul Pi) |
-| 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet | ⏳ |
+| 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) + `/ask` | ✅ verificato sul Pi |
+| 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet, `agent_status` | ✅ fatto (da provare sul Pi) |
 | 3c | Agente: report giornaliero/settimanale, `/report` | ⏳ |
 | 4a | `battery_cycles` + `get_battery_cycles` | ⏳ |
 | 4b | Procedure batteria (macchina a stati) | ⏳ |

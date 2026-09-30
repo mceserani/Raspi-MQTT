@@ -34,6 +34,7 @@ Sul PC, con il simulatore: `npm run simulator -- --broker`, poi `node battery-cm
 | `query_readonly` | SQL di sola lettura: una istruzione, niente commenti, max 200 righe e 10 s |
 | `read_notes` / `write_notes` | Memoria dell'agente: file Markdown in `~raspi-agent/notes` (max 16 KB ciascuno) |
 | `send_telegram` | Messaggio all'utente, inviato dal supervisore con il prefisso 🤖 (max 30/ora) |
+| `request_escalation` | Solo nel triage: chiede al supervisore un'indagine con Sonnet sugli eventi indicati (`supervisor/agent/escalate`) |
 | `send_battery_command` | `set_current_ma`, `set_voltage_mv`, `set_run_state`: validato, poi inviato su `command/request` (bridge → dispatch → ack) |
 
 ## Sicurezza dei comandi batteria

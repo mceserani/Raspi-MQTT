@@ -85,6 +85,14 @@ Profilo attivo: dichiarazione manuale (`/battery <nome>`) oppure `batteryTypeCod
 
 Notifiche: eventi dalla gravità `notifyMinSeverity` in su, rientri, al massimo `maxMessagesPerMinute` messaggi al minuto (i critical passano sempre).
 
+## Triage degli eventi
+
+Ogni `checkSeconds` il supervisore cerca gli eventi warning/critical con `agent_status = 'pending'` delle ultime `lookbackHours` ore, vecchi almeno `settleSeconds` (così quelli brevissimi arrivano già rientrati), e li manda all'agente in **un solo lavoro** `triage` (Haiku, al massimo `maxEventsPerJob` eventi). Tra un triage e l'altro passano almeno `minGapMinutes` minuti, `criticalMinGapMinutes` se c'è un critical. Serve il lanciatore attivo.
+
+L'agente valuta gli eventi, avvisa l'utente solo se aggiunge informazioni utili, annota i fatti ricorrenti e può chiedere un'indagine (`request_escalation`): il supervisore lancia allora un lavoro `investigate` (Sonnet, al massimo `maxEscalationsPerDay` al giorno) la cui conclusione arriva su Telegram.
+
+`agent_status` di un evento: `skip` (info, non valutato) → `pending` → `queued` → `handled` (triage concluso) / `escalated` (indagine chiesta) / `error` (esecuzione fallita, non ripetuta). Se il budget non basta l'evento torna `pending` e viene ripreso al triage successivo. Gli allarmi del supervisore partono comunque subito: il triage aggiunge solo la lettura dell'agente.
+
 ## Tabelle
 
 | Tabella | Contenuto |

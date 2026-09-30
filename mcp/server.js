@@ -85,6 +85,14 @@ const DEFINITIONS = {
 		},
 		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true }
 	},
+	request_escalation: {
+		description: 'Solo durante il triage: chiede un\'indagine approfondita (Sonnet) sugli eventi indicati, quando non bastano i dati o serve un giudizio più accurato. Costa un\'esecuzione del budget giornaliero: usarla solo se necessario.',
+		inputSchema: {
+			eventIds: z.array(z.number().int()).min(1).max(20),
+			summary: z.string().min(10).max(1000).describe('Cosa hai osservato e cosa va chiarito')
+		},
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }
+	},
 	send_battery_command: {
 		description: 'Comando alla batteria, validato contro il profilo attivo (vedi commandBounds in get_live_status). set_run_state: 0 stop (sempre consentito), 1 carica, 2 scarica; per cambiare modo fermare prima. Setpoint in mA/mV interi positivi. Rifiutato se l\'interblocco è scattato, il profilo non è utilizzabile o i dati non sono aggiornati. Ogni comando, anche rifiutato, viene registrato e notificato all\'utente.',
 		inputSchema: {

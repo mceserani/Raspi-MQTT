@@ -22,6 +22,9 @@ test('planRun: total budget, Sonnet downgraded to Haiku', () => {
 	assert.deepEqual(planRun({ total: 0, sonnet: 0 }, 'sonnet', LIMITS), { model: 'sonnet', downgraded: false });
 	assert.deepEqual(planRun({ total: 1, sonnet: 1 }, 'sonnet', LIMITS), { model: 'haiku', downgraded: true });
 	assert.match(planRun({ total: 3, sonnet: 1 }, 'haiku', LIMITS).refused, /esaurito/);
+	// Automatic jobs leave the reserve free for the user
+	assert.match(planRun({ total: 1, sonnet: 0 }, 'haiku', LIMITS, 2).refused, /riservate/);
+	assert.equal(planRun({ total: 0, sonnet: 0 }, 'haiku', LIMITS, 2).model, 'haiku');
 });
 
 test('Budget persists the counts and resets them the next day', async () => {
@@ -63,7 +66,7 @@ function makeLauncher({ run, used = 0 } = {}) {
 	const published = [];
 	let counts = { total: used, sonnet: 0 };
 	const budget = {
-		plan: (model) => planRun(counts, model, LIMITS),
+		plan: (model, reserve) => planRun(counts, model, LIMITS, reserve),
 		consume: async (model) => { counts = { total: counts.total + 1, sonnet: counts.sonnet + (model === 'sonnet' ? 1 : 0) }; },
 		summary: () => ({ used: counts.total, max: 3, sonnetUsed: counts.sonnet, sonnetMax: 1 })
 	};
