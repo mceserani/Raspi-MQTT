@@ -16,10 +16,14 @@ const sample = {
 	}
 };
 
-test('the repository profiles file is valid and contains only non-usable placeholders', async () => {
+test('the repository profiles file is valid: real profiles are usable, placeholders are not', async () => {
 	const data = await loadProfiles(path.join(here, '..', 'config', 'battery-profiles.json'));
-	for (const profile of Object.values(data.profiles)) {
-		assert.ok(profileProblems(profile).length > 0);
+	for (const [name, profile] of Object.entries(data.profiles)) {
+		if (profile.placeholder === true) {
+			assert.ok(profileProblems(profile).length > 0, name);
+		} else {
+			assert.deepEqual(profileProblems(profile), [], name);
+		}
 	}
 });
 

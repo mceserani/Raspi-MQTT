@@ -1,9 +1,21 @@
 {
-  "$comment": "Profili di sicurezza batteria. Un profilo con placeholder=true o con un limite a null NON è utilizzabile: l'agente può solo osservare (default deny). Unità: vMin/vMax mV, iChargeMax/iDischargeMax mA (valori positivi), tempMax °C (NTC), maxPhaseDuration s.",
+  "$comment": "Profili di sicurezza batteria. Un profilo con placeholder=true o con un limite a null NON è utilizzabile: l'agente può solo osservare (default deny). Unità: vMin/vMax mV, iChargeMax/iDischargeMax mA (valori positivi), tempMax °C (NTC), maxPhaseDuration s. I limiti sono soglie di intervento dell'interblocco sui valori MISURATI, non valori di lavoro.",
   "version": 1,
   "profiles": {
+    "liion-18650-2600": {
+      "description": "Li-ion 18650 3,7 V 2600 mAh 9,62 Wh con PCB di protezione (LabBattery18650 v1.0). Limiti prudenti in assenza di datasheet: carica CC/CV a 4200 mV (vMax lascia 30 mV di margine al rumore di misura), scarica fino a 3000 mV, carica max 0,5C, scarica max 1C, 45 °C (limite di carica Li-ion), fase max 8 h.",
+      "batteryTypeCodes": [],
+      "limits": {
+        "vMin": 3000,
+        "vMax": 4230,
+        "iChargeMax": 1300,
+        "iDischargeMax": 2600,
+        "tempMax": 45,
+        "maxPhaseDuration": 28800
+      }
+    },
     "segnaposto": {
-      "description": "SEGNAPOSTO — valori da definire per il tipo di batteria reale",
+      "description": "SEGNAPOSTO — modello da copiare per un nuovo tipo di batteria",
       "placeholder": true,
       "batteryTypeCodes": [],
       "limits": {

@@ -314,7 +314,7 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 3c | Agente: report giornaliero/settimanale, `/report`, `/ask` | ⏳ |
 | 4a | `battery_cycles` + `get_battery_cycles` | ⏳ |
 | 4b | Procedure batteria (macchina a stati) | ⏳ |
-| 4c | Profili reali | ⏳ (domanda 5) |
+| 4c | Profili reali | 🟡 primo profilo `liion-18650-2600` (limiti prudenti, da verificare sul banco); altri tipi da definire |
 | 5 | Opzionale: retention DB, snapshot JSON | da decidere |
 
 ### Note di implementazione
