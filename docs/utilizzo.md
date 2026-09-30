@@ -8,6 +8,7 @@ Questa guida è rivolta a chi usa il sistema: consultare le misure, comandare il
 - [Leggere i dati con un client MQTT qualsiasi](#leggere-i-dati-con-un-client-mqtt-qualsiasi)
 - [Consultare lo storico su MariaDB](#consultare-lo-storico-su-mariadb)
 - [Integrazione con altri sistemi](#integrazione-con-altri-sistemi)
+- [Telegram e agente](#telegram-e-agente)
 
 ---
 
@@ -263,3 +264,24 @@ Poiché tutti i dati passano dal broker MQTT con payload JSON semplici, il siste
 - **Home Assistant**: sensori MQTT con `value_template: "{{ value_json.value }}"`.
 - **Grafana**: sorgente dati MySQL/MariaDB puntata sul database `sensor_data`, con `recorded_at` come colonna temporale.
 - **Telegraf / InfluxDB**: input `mqtt_consumer` con `data_format = "json"`.
+
+## Telegram e agente
+
+Con il livello di monitoraggio installato, il sistema si usa anche dal bot Telegram (solo dalla chat autorizzata).
+
+| Comando | Uso |
+|---|---|
+| `/status` | Valori attuali, batteria, profilo, interblocco, eventi aperti, servizi, agente e budget del giorno |
+| `/eventi` | Eventi aperti |
+| `/stop` | Ferma subito la batteria |
+| `/battery [nome\|auto]` | Mostra o dichiara il profilo della batteria collegata: va fatto **prima** di avviare carica o scarica |
+| `/reset` | Riarma l'interblocco dopo averne verificato la causa |
+| `/ask <domanda>` | Domanda all'agente sui dati, per esempio `/ask com'è andato il PM2.5 nelle ultime 6 ore?` |
+| `/help` | Elenco dei comandi |
+
+Messaggi che si ricevono:
+
+- ⚠️ / 🚨 dal supervisore: un evento warning / critical si apre; ✅ quando rientra; 🔺 se peggiora.
+- 🤖 dall'agente: risposte a `/ask`, valutazioni del triage (solo se aggiungono qualcosa agli allarmi), conclusioni delle indagini, notifiche dei comandi batteria dell'agente (eseguiti o rifiutati).
+
+L'agente ha un budget di esecuzioni al giorno (oggi 10, di cui 5 con Sonnet): `/status` mostra quante ne restano. Dettagli in [supervisore.md](supervisore.md) e [lanciatore.md](lanciatore.md).

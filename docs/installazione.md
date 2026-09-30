@@ -8,6 +8,7 @@
 - [Installazione come servizi systemd](#installazione-come-servizi-systemd)
 - [Esecuzione manuale](#esecuzione-manuale)
 - [Installazione delle dashboard su un PC remoto](#installazione-delle-dashboard-su-un-pc-remoto)
+- [Livello di monitoraggio e agente](#livello-di-monitoraggio-e-agente)
 - [Aggiornamento](#aggiornamento)
 
 ---
@@ -321,6 +322,34 @@ npm run battery-remote
 
 Su Windows/macOS serve Node.js ≥ 20.6. Non è necessario configurare MariaDB né le porte seriali. Verificare che la porta 1883 del Raspberry sia raggiungibile (firewall) e che Mosquitto ascolti sull'interfaccia di rete.
 
+## Livello di monitoraggio e agente
+
+Facoltativo e **additivo**: non modifica i tre servizi di acquisizione. Richiede un sistema a **64 bit** (`uname -m` → `aarch64`), Node.js installato a livello di sistema (non nella home di un utente, per esempio con nvm), un abbonamento Claude e un bot Telegram. Ordine di installazione:
+
+| # | Passo | Comando / riferimento |
+|---|---|---|
+| 1 | Utente Linux `raspi-agent` (senza sudo), utente MariaDB `agent_ro` (sola lettura), `agent.env`, Claude Code | `./setup-agent-prereqs.sh --install-claude` |
+| 2 | Token dell'abbonamento: `claude setup-token` su un PC, poi incollarlo in `CLAUDE_CODE_OAUTH_TOKEN=` | `sudo nano /home/raspi-agent/.config/raspi-agent/agent.env` |
+| 3 | Bot Telegram con @BotFather, token in `.env` (`TELEGRAM_BOT_TOKEN`) | [supervisore.md](supervisore.md) |
+| 4 | Supervisore, poi `TELEGRAM_CHAT_ID` (il bot lo comunica al primo messaggio) e riavvio | `./setup-supervisor-service.sh` |
+| 5 | Profilo della batteria in uso | `config/battery-profiles.json`, poi `/battery <nome>` da Telegram |
+| 6 | Server MCP dell'agente in `/opt/raspi-agent` e istruzioni `CLAUDE.md` | `./setup-agent-mcp.sh` ([mcp.md](mcp.md)) |
+| 7 | Lanciatore dell'agente (servizio `raspi-agent-launcher`) | `./setup-agent-launcher.sh` ([lanciatore.md](lanciatore.md)) |
+
+File e percorsi:
+
+| Percorso | Contenuto | Proprietario |
+|---|---|---|
+| `.env` del progetto | Credenziali dei servizi e del supervisore, **token Telegram** | utente dei servizi |
+| `/home/raspi-agent/.config/raspi-agent/agent.env` | Credenziali dell'agente: MariaDB `agent_ro`, MQTT, `CLAUDE_CODE_OAUTH_TOKEN` | `raspi-agent`, permessi 600 |
+| `/home/raspi-agent/.config/raspi-agent/mcp.json` | Configurazione MCP per Claude Code | root, leggibile da `raspi-agent` |
+| `/opt/raspi-agent/` | Copia del server MCP e del lanciatore | root (l'agente non può modificarla) |
+| `/home/raspi-agent/workspace/CLAUDE.md` | Istruzioni dell'agente | root |
+| `/home/raspi-agent/notes/` | Note persistenti dell'agente | `raspi-agent` |
+| `/home/raspi-agent/.local/state/raspi-agent/budget.json` | Esecuzioni usate oggi | `raspi-agent` |
+
+Configurazione: soglie del supervisore in `config/supervisor.json`, profili batteria in `config/battery-profiles.json`, strumenti e budget dell'agente in `config/agent.json`.
+
 ## Aggiornamento
 
 ```bash
@@ -328,5 +357,16 @@ cd ~/Raspi-MQTT
 git pull
 ./setup-systemd-services.sh    # reinstalla le dipendenze e riavvia i servizi
 ```
+
+Se è installato il livello di monitoraggio:
+
+```bash
+npm install
+sudo systemctl restart raspi-supervisor
+./setup-agent-mcp.sh                       # ricopia server MCP, lanciatore e CLAUDE.md in /opt e nel workspace
+sudo systemctl restart raspi-agent-launcher
+```
+
+Solo i profili batteria sono cambiati: basta `sudo systemctl reload raspi-supervisor`.
 
 Le tabelle esistenti non vengono modificate: `CREATE TABLE IF NOT EXISTS` non altera lo schema di una tabella già presente. Se una nuova versione aggiunge colonne, lo schema va aggiornato manualmente con `ALTER TABLE`.

@@ -8,7 +8,7 @@
 
 ## ▶ Punto di ripartenza (aggiornato 2026-09-30)
 
-**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`) e fase 2 (server MCP). Sul PC: 67 test verdi e prova completa con simulatore, bridge, supervisore e server MCP (comandi eseguiti, rifiutati, audit e messaggi arrivati al supervisore).
+**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`) e fase 3b (`CLAUDE.md` e triage). Sul PC: 81 test verdi (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
 
 **Sul Pi (30/09):** passi 1–6 della fase 1 completati (prerequisiti, token Claude, bot Telegram con chat_id, supervisore installato, verifiche MariaDB). Il supervisore gira in osservazione **fino a venerdì mattina (2026-10-02)**: annotare eventi falsi o mancanti, segno della corrente in scarica, comportamento del registro 405.
 

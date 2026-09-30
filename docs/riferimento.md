@@ -4,6 +4,7 @@
   - [Sensori di laboratorio](#sensori-di-laboratorio)
   - [Batteria — telemetria](#batteria--telemetria)
   - [Comandi batteria](#comandi-batteria)
+  - [Supervisore e agente](#supervisore-e-agente)
 - [Mappa registri Modbus](#mappa-registri-modbus)
 - [Schema del database](#schema-del-database)
 - [Formato dei log](#formato-dei-log)
@@ -35,6 +36,11 @@
 | `sensors/battery/command/request` | ← | 1 | no | client (dashboard, altri) |
 | `sensors/battery/command/dispatch` | interno | 1 | no | battery-cmd-bridge |
 | `sensors/battery/command/ack` | → | 1 | no | battery-cmd-bridge, battery-mqtt |
+| `supervisor/status` | → | 1 | **sì** | raspi-supervisor |
+| `supervisor/agent/jobs` | interno | 1 | no | raspi-supervisor |
+| `supervisor/agent/launcher` | interno | 1 | **sì** | raspi-agent-launcher |
+| `supervisor/agent/results` | interno | 1 | no | raspi-agent-launcher |
+| `supervisor/agent/telegram`, `audit`, `escalate` | interno | 1 | no | server MCP, lanciatore |
 
 Il prefisso `sensors/battery` è configurabile con `BATTERY_MQTT_TOPIC`; `sensors/lab` è fisso.
 
@@ -178,6 +184,8 @@ Stesso formato dei sensori di laboratorio (`value`, `unit`, `timestamp`, `sensor
 
 I valori possono essere inviati anche come stringhe numeriche (`"1500"`): vengono convertiti con `Number()`.
 
+I comandi dell'agente arrivano su questo topic dal server MCP con `source: "agent"` e un campo `reason` (motivazione), dopo la validazione contro il profilo batteria (vedi [mcp.md](mcp.md)); il bridge non applica limiti propri. Gli stop del supervisore (interblocco, `/stop`) vanno invece direttamente su `command/dispatch` con `source: "supervisor-…"`.
+
 #### Inoltro — `sensors/battery/command/dispatch`
 
 Topic interno fra bridge e servizio batteria. Contiene il payload della richiesta più:
@@ -229,6 +237,20 @@ Errore:
 | `battery-mqtt` | Errore durante l'esecuzione (la scrittura potrebbe essere avvenuta o meno) | `[write-reg-400] Timed out`, `Value out of 16-bit range: …`, `Modbus port unavailable`, `Battery state read timeout` |
 
 Una richiesta con **JSON non valido** su `command/request` viene scartata dal bridge senza ACK.
+
+### Supervisore e agente
+
+| Topic | Da → a | Contenuto |
+|---|---|---|
+| `supervisor/status` | supervisore → server MCP, chiunque | Snapshot JSON ogni 5 s: valori attuali, profilo batteria attivo e limiti, interblocco, eventi aperti, salute dei servizi, stato dell'agente. Last will `{"online": false}` |
+| `supervisor/agent/jobs` | supervisore → lanciatore | Lavoro per l'agente: `{ jobId, kind, prompt, requestedBy, replyTelegram, eventIds }` |
+| `supervisor/agent/launcher` | lanciatore → supervisore | Stato del lanciatore: `{ online, running, queued, budget }`. Last will `{"online": false}` |
+| `supervisor/agent/results` | lanciatore → supervisore | Esito di un lavoro: `{ jobId, kind, status: ok\|refused\|error, model, result, error, eventIds }` |
+| `supervisor/agent/telegram` | server MCP, lanciatore → supervisore | Messaggio per l'utente: `{ text, level }` |
+| `supervisor/agent/audit` | server MCP → supervisore | Comando batteria dell'agente: `{ command, value, reason, outcome, message }` |
+| `supervisor/agent/escalate` | server MCP → supervisore | Richiesta di indagine dal triage: `{ eventIds, summary }` |
+
+Il prefisso `supervisor/agent` è configurabile con `SUPERVISOR_AGENT_TOPIC`, `supervisor/status` con `SUPERVISOR_STATUS_TOPIC`. Dettagli in [supervisore.md](supervisore.md), [mcp.md](mcp.md) e [lanciatore.md](lanciatore.md).
 
 ---
 
@@ -331,6 +353,18 @@ CREATE TABLE IF NOT EXISTS battery_measurements (
 | `run_state`, `run_state_label` | Stato di marcia, codice ed etichetta |
 | `battery_type` | Registro 405 |
 | `controller_address`, `device_code`, `firmware_version` | Dati del controller letti all'avvio del servizio |
+
+### Tabelle del supervisore
+
+Create da `raspi-supervisor` all'avvio (`CREATE TABLE IF NOT EXISTS`); descrizione completa in [supervisore.md](supervisore.md#tabelle).
+
+| Tabella | Contenuto |
+|---|---|
+| `supervisor_events` | Eventi (apertura, rientro, gravità, messaggio, dettagli JSON) e `agent_status` del triage |
+| `summary_minute`, `summary_hour` | Riassunti per bucket, sorgente e grandezza: campioni, media, min, max, p95, buco più lungo |
+| `supervisor_state` | Stato persistente: profilo batteria dichiarato, latch dell'interblocco, avanzamento delle aggregazioni, triage |
+
+L'agente legge il database con l'utente `agent_ro` (solo `SELECT`), creato da `setup-agent-prereqs.sh`.
 
 ### Note sul fuso orario
 

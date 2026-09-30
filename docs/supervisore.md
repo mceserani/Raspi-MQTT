@@ -66,7 +66,7 @@ Controlla i valori **misurati** a ogni stato ricevuto (1 Hz), solo con batteria 
 - temperatura NTC > `tempMax`, oppure NTC assente da `temperatureStaleSeconds` (se `stopOnMissingTemperature`);
 - fase attiva da più di `maxPhaseDuration`.
 
-Una violazione confermata per `confirmSamples` campioni consecutivi invia `set_run_state 0` **direttamente su `command/dispatch`** (funziona anche senza il bridge), verifica che lo stato torni a 0 e riprova fino a `stopRetries` volte; se non basta apre `interlock:stop_failed` (critical). L'interblocco resta **scattato** (latch, salvato nel DB) finché non si usa `/reset`: la fase 2 impedirà all'agente di riavviare la batteria finché il latch è attivo.
+Una violazione confermata per `confirmSamples` campioni consecutivi invia `set_run_state 0` **direttamente su `command/dispatch`** (funziona anche senza il bridge), verifica che lo stato torni a 0 e riprova fino a `stopRetries` volte; se non basta apre `interlock:stop_failed` (critical). L'interblocco resta **scattato** (latch, salvato nel DB) finché non si usa `/reset`: fino ad allora il server MCP rifiuta all'agente ogni comando batteria tranne lo stop.
 
 Profilo attivo: dichiarazione manuale (`/battery <nome>`) oppure `batteryTypeCodes` sul registro 405. Tipo sconosciuto, profilo segnaposto o incompleto → **solo osservazione**, interblocco inattivo (e `battery:no_profile` se la batteria è in marcia). Dopo aver modificato `config/battery-profiles.json`: `sudo systemctl reload raspi-supervisor`.
 
@@ -113,4 +113,6 @@ SELECT * FROM supervisor_state;
 
 ## Stato pubblicato
 
-Ogni `statusPublishSeconds` il supervisore pubblica su `supervisor/status` (retained) uno snapshot JSON: valori attuali, profilo attivo con i limiti, latch, eventi aperti, salute dei servizi. Se il processo cade, il broker pubblica `{"online": false}` (last will). Il server MCP della fase 2 leggerà da qui.
+Ogni `statusPublishSeconds` il supervisore pubblica su `supervisor/status` (retained) uno snapshot JSON: valori attuali, profilo attivo con i limiti, latch, eventi aperti, salute dei servizi. Se il processo cade, il broker pubblica `{"online": false}` (last will). Il server MCP legge da qui lo stato per l'agente e per validare i comandi batteria.
+
+Con l'agente il supervisore usa anche i topic `supervisor/agent/*`: pubblica i lavori (`jobs`) e riceve dal lanciatore stato (`launcher`) ed esiti (`results`), dal server MCP messaggi Telegram (`telegram`), audit dei comandi batteria (`audit`) e richieste di indagine (`escalate`). Elenco completo in [riferimento.md](riferimento.md#supervisore-e-agente).

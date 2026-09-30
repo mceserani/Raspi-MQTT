@@ -10,6 +10,7 @@ Questo documento descrive come è organizzato il software, come circolano i dati
 - [battery-cmd-bridge.js — bridge dei comandi](#battery-cmd-bridgejs--bridge-dei-comandi)
 - [modbus-autodetect.js — rilevamento automatico delle porte](#modbus-autodetectjs--rilevamento-automatico-delle-porte)
 - [Dashboard](#dashboard)
+- [Livello di monitoraggio e agente](#livello-di-monitoraggio-e-agente)
 - [Resilienza e gestione degli errori](#resilienza-e-gestione-degli-errori)
 
 ---
@@ -42,6 +43,8 @@ flowchart LR
 Il sistema è composto da **tre processi di servizio** indipendenti (eseguiti come unità systemd) e **due client interattivi**. I processi non comunicano mai direttamente tra loro: l'unico canale condiviso è il **broker MQTT**. Questo li rende avviabili, riavviabili e sostituibili in modo indipendente.
 
 Ogni dispositivo Modbus è collegato a un **proprio adattatore USB-seriale** e gestito da **un solo processo**: la porta seriale viene aperta in modo esclusivo, quindi due processi non possono condividerla.
+
+Sopra questi processi può girare il [livello di monitoraggio e agente](#livello-di-monitoraggio-e-agente), che usa gli stessi topic MQTT e lo stesso database senza modificare i servizi.
 
 ## Flussi dei dati
 
@@ -274,6 +277,34 @@ Entrambe le dashboard sono client MQTT puri: **non** accedono né a Modbus né a
 - Per non cancellare quello che l'utente sta digitando, il ridisegno dello schermo viene rimandato finché la riga di input non è vuota.
 
 ---
+
+## Livello di monitoraggio e agente
+
+```mermaid
+flowchart LR
+    MQ[("Broker MQTT")]
+    DB[("MariaDB")]
+    SUP["raspi-supervisor<br/>regole, interblocco,<br/>riassunti, triage"]
+    L["raspi-agent-launcher<br/>coda + budget"]
+    C["Claude Code<br/>(claude -p)"]
+    MCP["server MCP raspi"]
+    TG["Telegram"]
+    MQ -- "sensors/#, ack" --> SUP
+    SUP -- "eventi, riassunti" --> DB
+    SUP -- "stop (dispatch)" --> MQ
+    SUP <--> TG
+    SUP -- "supervisor/agent/jobs" --> L
+    L --> C
+    C <--> MCP
+    MCP -- "SELECT (agent_ro)" --> DB
+    MCP -- "supervisor/status, command/request,<br/>supervisor/agent/*" --> MQ
+```
+
+- **Supervisore** (`supervisor/`, servizio `raspi-supervisor`): deterministico, non consuma token. Valuta regole e soglie sui dati MQTT, apre e chiude eventi, ferma la batteria se i valori misurati escono dal profilo (interblocco), calcola i riassunti per minuto e per ora, gestisce il bot Telegram (unico a conoscerne il token) e passa gli eventi all'agente per il triage. Vedi [supervisore.md](supervisore.md).
+- **Lanciatore** (`agent/`, servizio `raspi-agent-launcher`, utente `raspi-agent`): riceve i lavori, li esegue uno alla volta con Claude Code entro un budget giornaliero di esecuzioni. Vedi [lanciatore.md](lanciatore.md).
+- **Server MCP** (`mcp/`): gli unici strumenti dell'agente. Legge lo stato dal supervisore e il database in sola lettura, valida i comandi batteria contro il profilo attivo, passa messaggi e audit al supervisore. Vedi [mcp.md](mcp.md).
+
+Principio: tutto ciò che è continuo, ripetitivo o critico per la sicurezza è codice deterministico; l'agente interpreta, decide e spiega. Motivazioni e decisioni in [PIANO-AGENTE.md](PIANO-AGENTE.md).
 
 ## Resilienza e gestione degli errori
 

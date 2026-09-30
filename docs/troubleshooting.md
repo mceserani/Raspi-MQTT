@@ -26,6 +26,10 @@ mosquitto_sub -h localhost -u <utente> -P <password> -t 'sensors/#' -v -C 10
 # 5. cosa dicono i log?
 journalctl -u raspi-labsens -n 50 --no-pager
 journalctl -u raspi-battery -n 50 --no-pager
+
+# 6. livello di monitoraggio (se installato)
+systemctl status raspi-supervisor raspi-agent-launcher --no-pager
+journalctl -u raspi-supervisor -n 50 --no-pager
 ```
 
 ## Problemi frequenti
@@ -102,6 +106,22 @@ Il terminale deve supportare i codici ANSI e UTF-8. Su Windows usare Windows Ter
 
 È atteso: MQTT usa UTC, il database l'ora locale del Raspberry. Vedi [riferimento.md](riferimento.md#note-sul-fuso-orario).
 
+### Agente e supervisore
+
+| Sintomo | Causa e rimedio |
+|---|---|
+| Il comando di prova di Claude mostra il prompt `>` e non parte | Nella copia si è perso l'apice `'` finale che chiude `bash -c '…'`. Ctrl+C e ricopiare la riga intera. |
+| `setup-agent-mcp.sh`: `raspi-agent cannot run …/node` | Node.js è installato nella home di un utente (nvm). Installarlo a livello di sistema (per esempio pacchetti NodeSource in `/usr/bin`). |
+| `setup-agent-mcp.sh`: `MCP SDK missing` | Eseguire `npm install` nel progetto dopo il `git pull`. |
+| Il bot non risponde | `systemctl status raspi-supervisor`; nel journal un `401` indica un token errato. Senza `TELEGRAM_CHAT_ID` il bot risponde solo con il chat_id. |
+| `/ask` risponde "Il lanciatore dell'agente non è attivo" | `systemctl status raspi-agent-launcher` e `journalctl -u raspi-agent-launcher -n 50`; verificare `CLAUDE_CODE_OAUTH_TOKEN` in `agent.env`. |
+| L'agente risponde che il budget è esaurito, o il triage non parte | Budget del giorno usato (`/status`, riga Agente). I lavori automatici lasciano libere alcune esecuzioni per `/ask` ([lanciatore.md](lanciatore.md)). Si azzera a mezzanotte. |
+| Un comando batteria dell'agente è rifiutato | Comportamento voluto: il motivo è nella notifica. Controllare profilo (`/battery`), interblocco (`/reset` dopo le verifiche) e `commandBounds` in `get_live_status` ([mcp.md](mcp.md)). |
+| Evento `battery:no_profile` | Batteria in marcia senza profilo utilizzabile: dichiararlo con `/battery <nome>`. Fino ad allora l'interblocco è inattivo. |
+| Dopo un `git pull` il comportamento dell'agente non cambia | Rilanciare `./setup-agent-mcp.sh` e `sudo systemctl restart raspi-agent-launcher`: l'agente usa la copia in `/opt/raspi-agent`. |
+
+Per provare gli strumenti dell'agente senza consumare token: `tools/mcp-call.js` (vedi [mcp.md](mcp.md)).
+
 ## Strumenti di diagnosi
 
 ### Esecuzione in primo piano
@@ -143,19 +163,19 @@ SELECT MAX(recorded_at) FROM battery_measurements;
 
 | Area | Limitazione |
 |---|---|
-| Sensori di laboratorio | I registri 64–69 e 34 sono interpretati **senza segno**: una temperatura negativa inviata in complemento a due verrebbe letta come un valore molto alto (es. −1,00 °C → 655,35 °C). |
+| Sensori di laboratorio | I registri 64–69 e 34 sono interpretati **senza segno**: una temperatura negativa inviata in complemento a due verrebbe letta come un valore molto alto (es. −1,00 °C → 655,35 °C). Il supervisore corregge le temperature prima di valutarle e di aggregarle; il database e i topic MQTT restano invariati. |
 | Sensori di laboratorio | Il topic base `sensors/lab` è fisso nel codice di `labsens-mqtt.js` e `dashboard.js`. |
 | Sensori di laboratorio | I messaggi non sono `retain`: un client che si collega non riceve l'ultimo valore finché non arriva il ciclo successivo. |
 | Sensori di laboratorio | Il `timestamp` MQTT e `recorded_at` nel DB sono generati al momento della pubblicazione/inserimento, non della lettura Modbus (differenza di pochi millisecondi). |
 | Dashboard sensori | La soglia `(stale)` è fissa a 15 s e le scale delle barre sono definite nel codice. |
 | Controller batteria | Le informazioni del controller (`meta`) sono lette solo all'avvio del servizio. |
 | Controller batteria | Un errore di scrittura su MariaDB conta come ciclo fallito: se il database resta irraggiungibile per `BATTERY_MAX_FAILURES` cicli, la porta seriale viene chiusa e riaperta con un nuovo autodetect, anche se il dispositivo funziona. |
-| Controller batteria | Nessun limite software sui setpoint di corrente e tensione. |
+| Controller batteria | Nessun limite software sui setpoint di corrente e tensione per le dashboard e per chi pubblica su `command/request`. I comandi dell'agente sono validati dal server MCP contro il profilo attivo, e l'interblocco del supervisore ferma la batteria sui valori misurati. |
 | Comandi | Un JSON non valido su `command/request` viene scartato senza ACK. |
 | Autodetect | I dispositivi sono distinti **solo per indirizzo Modbus**: due dispositivi con lo stesso indirizzo su adattatori diversi non sono distinguibili. |
 | Installazione | `setup-systemd-services.sh` contiene percorso del progetto e utente scritti nel codice. |
 | Database | Nessuna politica di conservazione automatica: le tabelle crescono indefinitamente (vedi [utilizzo.md](utilizzo.md#volume-dei-dati)). |
-| Test | Il progetto non include test automatici. |
+| Test | I test automatici (`npm test`) coprono supervisore, server MCP e lanciatore; i servizi di acquisizione (`labsens-mqtt.js`, `battery-mqtt.js`, bridge) non ne hanno. |
 
 ## Note di sicurezza
 

@@ -18,6 +18,8 @@ Il controller batteria può anche essere **comandato da remoto** via MQTT (impos
 
 Sono incluse due **dashboard da terminale** per consultare i dati in tempo reale e inviare comandi, utilizzabili anche da un PC remoto.
 
+Sopra questi servizi c'è un **livello di monitoraggio** facoltativo: un supervisore deterministico (regole, eventi, interblocco di sicurezza della batteria, riassunti, bot Telegram) e un **agente Claude** che valuta gli eventi e risponde alle domande sui dati, con un budget giornaliero di esecuzioni. Il piano e lo stato di avanzamento sono in [docs/PIANO-AGENTE.md](docs/PIANO-AGENTE.md).
+
 ## Componenti
 
 | File | Tipo | Ruolo |
@@ -29,6 +31,12 @@ Sono incluse due **dashboard da terminale** per consultare i dati in tempo reale
 | `dashboard.js` | client interattivo | dashboard dei sensori di laboratorio |
 | `battery-remote-dashboard.js` | client interattivo | dashboard della batteria con console comandi |
 | `setup-systemd-services.sh` | script | installa e avvia i tre servizi come unità systemd |
+| `supervisor/` | servizio | supervisore: regole ed eventi, interblocco batteria, riassunti, bot Telegram, triage |
+| `mcp/` | server MCP | strumenti dell'agente: lettura dei dati, comandi batteria validati, messaggi |
+| `agent/` | servizio | lanciatore dell'agente (Claude Code) con coda e budget; istruzioni in `agent/workspace/CLAUDE.md` |
+| `lib/battery-profiles.js`, `config/` | libreria, configurazione | profili di sicurezza batteria, soglie del supervisore, configurazione dell'agente |
+| `tools/` | strumenti di sviluppo | simulatore dei dispositivi, broker di prova, chiamata diretta degli strumenti MCP |
+| `setup-agent-prereqs.sh`, `setup-supervisor-service.sh`, `setup-agent-mcp.sh`, `setup-agent-launcher.sh` | script | installano il livello di monitoraggio (vedi [installazione](docs/installazione.md#livello-di-monitoraggio-e-agente)) |
 
 ## Avvio rapido
 
@@ -55,6 +63,11 @@ npm run battery-cmd-bridge   # bridge comandi
 # 4. consultazione
 npm run dashboard            # dashboard sensori
 npm run battery-remote       # dashboard + comandi batteria
+
+# 5. livello di monitoraggio (facoltativo): vedi docs/installazione.md
+
+# test automatici (supervisore, server MCP, lanciatore)
+npm test
 ```
 
 ## Documentazione
@@ -66,6 +79,10 @@ npm run battery-remote       # dashboard + comandi batteria
 | [docs/utilizzo.md](docs/utilizzo.md) | Guida d'uso: dashboard, invio comandi, consultazione dei dati |
 | [docs/riferimento.md](docs/riferimento.md) | Riferimento tecnico: topic e payload MQTT, registri Modbus, schema del database |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Diagnostica, messaggi di log, problemi noti e limitazioni |
+| [docs/PIANO-AGENTE.md](docs/PIANO-AGENTE.md) | Livello di monitoraggio: obiettivi, decisioni, architettura, avanzamento |
+| [docs/supervisore.md](docs/supervisore.md) | Supervisore: regole, interblocco, comandi Telegram, triage, tabelle |
+| [docs/mcp.md](docs/mcp.md) | Server MCP: strumenti dell'agente e sicurezza dei comandi batteria |
+| [docs/lanciatore.md](docs/lanciatore.md) | Lanciatore dell'agente: lavori, budget, configurazione |
 
 ## Requisiti in breve
 
@@ -73,6 +90,7 @@ npm run battery-remote       # dashboard + comandi batteria
 - Broker **MQTT** (es. Mosquitto)
 - **MariaDB** (o MySQL compatibile)
 - Adattatori **USB ↔ RS-485** visibili in `/dev/serial/by-id/`
+- Solo per l'agente: sistema operativo a **64 bit** (Claude Code), abbonamento Claude, un bot **Telegram**
 
 ## Licenza
 
