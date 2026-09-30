@@ -80,6 +80,7 @@ Profilo attivo: dichiarazione manuale (`/battery <nome>`) oppure `batteryTypeCod
 | `/battery [nome\|auto]` | Mostra o dichiara il profilo batteria |
 | `/reset` | Riarma l'interblocco dopo le verifiche |
 | `/report`, `/ask` | Riservati all'agente (fase 3) |
+| `/help` | Elenco dei comandi (anche `/start`, inviato da Telegram all'apertura della chat) |
 
 Notifiche: eventi dalla gravità `notifyMinSeverity` in su, rientri, al massimo `maxMessagesPerMinute` messaggi al minuto (i critical passano sempre).
 

@@ -219,9 +219,12 @@ Il supervisore sveglia l'agente solo alla fine o in caso di anomalia.
 |---|---|---|
 | `/status` | supervisore | 0 |
 | `/stop` | supervisore (stop immediato batteria) | 0 |
+| `/eventi` | supervisore (eventi aperti) | 0 |
+| `/battery [profilo\|auto]` | supervisore (mostra o dichiara il profilo batteria) | 0 |
+| `/reset` | supervisore (riarma l'interblocco) | 0 |
+| `/help` (anche `/start`) | supervisore (elenco dei comandi) | 0 |
 | `/report` | agente (report on demand) | sì |
 | `/ask <domanda>` | agente (domanda libera sui dati) | sì |
-| *(eventuale)* `/battery <profilo>` | supervisore (dichiara tipo batteria) | 0 |
 
 ### 5.7 Runtime dell'agente
 
