@@ -12,19 +12,7 @@
 
 **Sul Pi (30/09):** passi 1–6 della fase 1 completati (prerequisiti, token Claude, bot Telegram con chat_id, supervisore installato, verifiche MariaDB). Il supervisore gira in osservazione **fino a venerdì mattina (2026-10-02)**: annotare eventi falsi o mancanti, segno della corrente in scarica, comportamento del registro 405.
 
-### Da fare sul Pi per la fase 2
-
-1. Aggiornare e installare il server MCP (dettagli in [mcp.md](mcp.md)):
-   ```bash
-   cd ~/Raspi-MQTT && git pull && npm install
-   sudo systemctl restart raspi-supervisor
-   ./setup-agent-mcp.sh
-   ```
-   Deve stampare `[✓] MCP server working`.
-2. Provare gli strumenti senza token con `mcp-call.js` (`get_live_status`, `get_summary`, `get_events`, `query_readonly`), poi una volta con Claude (comando stampato dallo script).
-3. Provare `send_telegram` e un comando batteria innocuo (per esempio `set_current_ma` a batteria ferma): su Telegram devono arrivare il messaggio 🤖 e la notifica di audit.
-
-Riportare in sessione eventuali errori (senza token/password).
+**Fase 2 verificata sul Pi (30/09):** `setup-agent-mcp.sh` installato, Claude (`claude -p` come `raspi-agent`) usa gli strumenti MCP, `get_summary`/`get_events`/`query_readonly` funzionano su MariaDB reale, `send_telegram` e un comando batteria con audit arrivano su Telegram.
 
 ### Prossimo passo di sviluppo
 
@@ -288,8 +276,8 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 1d | Supervisore: aggregazioni minuto/ora | ✅ fatto |
 | 1e | Supervisore: Telegram in uscita + `/status`, `/stop`, `/eventi`, `/battery`, `/reset` | ✅ fatto (da provare con il bot reale) |
 | 1f | Supervisore: `raspi-supervisor.service` (`setup-supervisor-service.sh`) | ✅ fatto |
-| 2a | MCP: tool di lettura (`get_live_status`, `get_service_health`, `get_summary`, `get_events`, `query_readonly`, note) | ✅ fatto (da provare sul Pi) |
-| 2b | MCP: `send_battery_command` validato, `send_telegram`, audit (`setup-agent-mcp.sh`) | ✅ fatto (da provare sul Pi) |
+| 2a | MCP: tool di lettura (`get_live_status`, `get_service_health`, `get_summary`, `get_events`, `query_readonly`, note) | ✅ verificato sul Pi |
+| 2b | MCP: `send_battery_command` validato, `send_telegram`, audit (`setup-agent-mcp.sh`) | ✅ verificato sul Pi |
 | 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) | ⏳ |
 | 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet | ⏳ |
 | 3c | Agente: report giornaliero/settimanale, `/report`, `/ask` | ⏳ |
