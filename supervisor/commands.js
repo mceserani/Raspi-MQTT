@@ -7,7 +7,7 @@ export const BOT_COMMANDS = [
 	{ command: 'battery', description: 'Profilo batteria: /battery [nome|auto]' },
 	{ command: 'reset', description: 'Riarma l\'interblocco dopo le verifiche' },
 	{ command: 'report', description: 'Report dell\'agente (fase 3)' },
-	{ command: 'ask', description: 'Domanda all\'agente (fase 3)' },
+	{ command: 'ask', description: 'Domanda all\'agente: /ask <domanda>' },
 	{ command: 'help', description: 'Elenco dei comandi' }
 ];
 
@@ -77,6 +77,7 @@ export function formatStatus(status) {
 			: `Servizi non attivi: ${down.map(([unit, service]) => `${unit} (${service.state})`).join(', ')}`);
 	}
 
+	if (status.agent !== undefined) lines.push(formatAgent(status.agent));
 	if (!status.databaseReady) lines.push('⚠️ MariaDB non raggiungibile: eventi in coda');
 	return lines.join('\n');
 }
@@ -92,7 +93,14 @@ export function formatEvents(events, now) {
 
 const HELP = BOT_COMMANDS.map((c) => `/${c.command} — ${c.description}`).join('\n');
 
-// ctx: status(), stop(), openEvents(), profiles(), setManualProfile(name|null), resetInterlock(), now()
+export function formatAgent(agent) {
+	if (!agent?.online) return 'Agente: non attivo';
+	const { used, max, sonnetUsed, sonnetMax } = agent.budget ?? {};
+	const activity = agent.running ? `al lavoro (${agent.running.kind})` : 'in attesa';
+	return `Agente: ${activity}${agent.queued ? `, ${agent.queued} in coda` : ''} · oggi ${used}/${max} esecuzioni (Sonnet ${sonnetUsed}/${sonnetMax})`;
+}
+
+// ctx: status(), stop(), openEvents(), profiles(), setManualProfile(name|null), resetInterlock(), askAgent(text), now()
 export function createCommandHandler(ctx) {
 	return async (command, args) => {
 		switch (command) {
@@ -134,9 +142,14 @@ export function createCommandHandler(ctx) {
 				return '🔓 Interblocco riarmato.';
 			}
 
+			case 'ask': {
+				if (args.length === 0) return 'Uso: /ask <domanda>. Esempio: /ask com\'è andato il PM2.5 nelle ultime 6 ore?';
+				const result = await ctx.askAgent(args.join(' '));
+				return result.ok ? `🤖 Domanda inviata all'agente.\n${formatAgent(result.agent)}` : `⚠️ ${result.message}`;
+			}
+
 			case 'report':
-			case 'ask':
-				return 'L\'agente non è ancora attivo: questo comando arriverà con la fase 3.';
+				return 'Il report dell\'agente arriverà con la fase 3c.';
 
 			default:
 				return `Comando sconosciuto: /${command}\n\n${HELP}`;

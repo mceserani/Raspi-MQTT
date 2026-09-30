@@ -74,12 +74,13 @@ Profilo attivo: dichiarazione manuale (`/battery <nome>`) oppure `batteryTypeCod
 
 | Comando | Effetto |
 |---|---|
-| `/status` | Valori attuali, batteria, profilo, interblocco, eventi aperti, servizi |
+| `/status` | Valori attuali, batteria, profilo, interblocco, eventi aperti, servizi, stato e budget dell'agente |
 | `/stop` | Stop immediato della batteria, con conferma |
 | `/eventi` | Eventi aperti |
 | `/battery [nome\|auto]` | Mostra o dichiara il profilo batteria |
 | `/reset` | Riarma l'interblocco dopo le verifiche |
-| `/report`, `/ask` | Riservati all'agente (fase 3) |
+| `/ask <domanda>` | Domanda all'agente sui dati: la risposta arriva con il prefisso 🤖 (vedi [lanciatore.md](lanciatore.md)) |
+| `/report` | Report dell'agente (fase 3c) |
 | `/help` | Elenco dei comandi (anche `/start`, inviato da Telegram all'apertura della chat) |
 
 Notifiche: eventi dalla gravità `notifyMinSeverity` in su, rientri, al massimo `maxMessagesPerMinute` messaggi al minuto (i critical passano sempre).

@@ -27,11 +27,16 @@ export class AgentLink {
 		this.now = now;
 		this.sentAt = [];
 		this.limitNoticeAt = 0;
+		this.launcher = null;
 	}
 
 	handle(kind, payload) {
 		if (kind === 'telegram') this.onTelegram(payload);
 		else if (kind === 'audit') this.onAudit(payload);
+		else if (kind === 'launcher') this.launcher = payload;
+		else if (kind === 'results' && payload?.status && payload.status !== 'ok') {
+			this.log.warn(`[WARN] Agent job ${payload.jobId} ${payload.status}: ${payload.error ?? ''}`);
+		}
 	}
 
 	onTelegram({ text, level }) {

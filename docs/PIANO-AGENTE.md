@@ -14,9 +14,20 @@
 
 **Fase 2 verificata sul Pi (30/09):** `setup-agent-mcp.sh` installato, Claude (`claude -p` come `raspi-agent`) usa gli strumenti MCP, `get_summary`/`get_events`/`query_readonly` funzionano su MariaDB reale, `send_telegram` e un comando batteria con audit arrivano su Telegram.
 
+**Fase 3a fatta e pubblicata (30/09), da provare sul Pi:** lanciatore `raspi-agent-launcher` e comando `/ask`. Budget deciso: **10 esecuzioni al giorno, di cui al massimo 5 con Sonnet**. Documentazione: [lanciatore.md](lanciatore.md).
+
+### Da fare sul Pi per la fase 3a
+
+```bash
+cd ~/Raspi-MQTT && git pull && npm install
+sudo systemctl restart raspi-supervisor
+./setup-agent-launcher.sh
+```
+Poi da Telegram: `/status` (riga `Agente: in attesa · oggi 0/10…`) e una domanda con `/ask`. Log: `journalctl -u raspi-agent-launcher -f`.
+
 ### Prossimo passo di sviluppo
 
-**Fase 3a — lanciatore dell'agente**: servizio che gira come `raspi-agent`, riceve i lavori dal supervisore (topic MQTT), li mette in coda (una esecuzione alla volta), rispetta il budget giornaliero e lancia `claude -p` con `--mcp-config`, `--strict-mcp-config` e solo gli strumenti `mcp__raspi__*`. Poi 3b (`CLAUDE.md`, triage Haiku → Sonnet, stato `agent_status` degli eventi) e 3c (report, `/report`, `/ask`). Domanda aperta da chiudere prima della 3c: orari dei report (§8, domanda 4).
+**Fase 3b — istruzioni e triage**: `CLAUDE.md` nella cartella di lavoro dell'agente (procedure, formato delle risposte, uso dei profili e delle note), triage degli eventi `pending` (il supervisore invia un lavoro Haiku per gli eventi warning/critical, con escalation a Sonnet) e aggiornamento di `agent_status` (serve uno strumento MCP per segnare gli eventi gestiti: l'utente `agent_ro` non può scrivere, lo farà il supervisore su richiesta MQTT). Poi 3c: report giornaliero e settimanale, `/report`. Domanda aperta prima della 3c: orari dei report (§8, domanda 4).
 
 ---
 
@@ -77,7 +88,7 @@ Rilevamento automatico porte seriali: `modbus-autodetect.js`.
 | Notifiche | **Telegram** |
 | Codice esistente | Non va modificato: tutto il nuovo software è **additivo** (nuovi file/servizi) |
 | Hardware | Raspberry Pi 4B, 4 GB RAM (serve OS a 64 bit per Claude Code) |
-| Pagamento agente | **Abbonamento Claude**: token di lunga durata (`claude setup-token`) in `CLAUDE_CODE_OAUTH_TOKEN`. La quota è condivisa con l'uso personale → budget espresso in **numero di esecuzioni/giorno** |
+| Pagamento agente | **Abbonamento Claude**: token di lunga durata (`claude setup-token`) in `CLAUDE_CODE_OAUTH_TOKEN`. La quota è condivisa con l'uso personale → budget espresso in **numero di esecuzioni/giorno**: 10 al giorno, di cui al massimo 5 con Sonnet |
 | Modelli | **Haiku** per il triage degli eventi (con escalation); **Sonnet** per report, `/report`, `/ask`, decisioni e procedure batteria. Configurabili da file |
 | Selezione profilo batteria | Supportate entrambe: registro 405 (`batteryTypeCodes`) e dichiarazione manuale, che ha la precedenza |
 | Credenziali Telegram | Solo il supervisore conosce il token del bot; l'agente invia messaggi passando dal supervisore |
@@ -278,9 +289,9 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 1f | Supervisore: `raspi-supervisor.service` (`setup-supervisor-service.sh`) | ✅ fatto |
 | 2a | MCP: tool di lettura (`get_live_status`, `get_service_health`, `get_summary`, `get_events`, `query_readonly`, note) | ✅ verificato sul Pi |
 | 2b | MCP: `send_battery_command` validato, `send_telegram`, audit (`setup-agent-mcp.sh`) | ✅ verificato sul Pi |
-| 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) | ⏳ |
+| 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) + `/ask` | ✅ fatto (da provare sul Pi) |
 | 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet | ⏳ |
-| 3c | Agente: report giornaliero/settimanale, `/report`, `/ask` | ⏳ |
+| 3c | Agente: report giornaliero/settimanale, `/report` | ⏳ |
 | 4a | `battery_cycles` + `get_battery_cycles` | ⏳ |
 | 4b | Procedure batteria (macchina a stati) | ⏳ |
 | 4c | Profili reali | 🟡 primo profilo `liion-18650-2600` (limiti prudenti, da verificare sul banco); altri tipi da definire |

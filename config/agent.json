@@ -37,5 +37,28 @@
 
   "notes": {
     "maxBytes": 16384
+  },
+
+  "launcher": {
+    "$comment": "Lanciatore dell'agente (fase 3a). Budget in esecuzioni al giorno (quota dell'abbonamento condivisa): un lavoro Sonnet oltre maxSonnetRunsPerDay passa a Haiku. Tipi di lavoro: modello, numero massimo di turni e strumenti MCP ammessi.",
+    "maxRunsPerDay": 10,
+    "maxSonnetRunsPerDay": 5,
+    "maxQueue": 5,
+    "timeoutSeconds": 300,
+    "maxPromptChars": 2000,
+    "maxReplyChars": 3000,
+    "systemPrompt": "Sei l'agente di monitoraggio del laboratorio (sensori ambientali e banco batteria) su un Raspberry Pi. Lavori solo con gli strumenti MCP raspi: non inventare dati, se uno strumento fallisce dillo. Rispondi in italiano, in testo semplice (niente Markdown), in modo conciso: la risposta finale viene inviata all'utente su Telegram.",
+    "jobs": {
+      "ask": {
+        "model": "sonnet",
+        "maxTurns": 12,
+        "tools": ["get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes"]
+      },
+      "test": {
+        "model": "haiku",
+        "maxTurns": 4,
+        "tools": ["get_live_status"]
+      }
+    }
   }
 }

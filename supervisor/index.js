@@ -172,6 +172,7 @@ function status() {
 		interlock: { armed: profile.usable, latched: interlock.latched },
 		openEvents: events.openEvents().map(({ key, severity, message, openedAt }) => ({ key, severity, message, openedAt })),
 		health: health.last,
+		agent: agentLink.launcher,
 		databaseReady: db.ready
 	};
 }
@@ -243,6 +244,17 @@ const handleCommand = createCommandHandler({
 		await state.set('battery.manualProfile', name);
 		events.record({ key: 'battery:profile_declared', source: 'battery', type: 'profile_declared', severity: 'info', message: `Profilo batteria dichiarato: ${name ?? 'auto (registro 405)'}`, details: { profile: name } }, Date.now());
 		return { ok: true, active: activeProfile() };
+	},
+	async askAgent(text) {
+		if (!agentLink.launcher?.online) {
+			return { ok: false, message: 'Il lanciatore dell\'agente non è attivo (raspi-agent-launcher).' };
+		}
+		if (!client.connected) {
+			return { ok: false, message: 'Broker MQTT non connesso.' };
+		}
+		const job = { jobId: `ask-${Date.now()}`, kind: 'ask', prompt: text, requestedBy: 'telegram', replyTelegram: true };
+		await client.publishAsync(`${env.agentTopic}/jobs`, JSON.stringify(job), { qos: 1 });
+		return { ok: true, agent: agentLink.launcher };
 	},
 	async resetInterlock() {
 		interlock.reset();

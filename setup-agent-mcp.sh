@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Installs the agent's MCP server (docs/PIANO-AGENTE.md, phase 2) in /opt/raspi-agent.
+# Installs the agent's MCP server and launcher code (docs/PIANO-AGENTE.md, phases 2-3) in /opt/raspi-agent.
 # The copy belongs to root: the raspi-agent user can run it but not change it,
 # and it cannot read the project's .env (Telegram token, main DB password).
-# Run it again after every "git pull" that touches mcp/ or config/agent.json.
+# Run it again after every "git pull" that touches mcp/, agent/ or config/agent.json
+# (then: sudo systemctl restart raspi-agent-launcher).
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +43,7 @@ echo "[+] Installing the MCP server in ${INSTALL_DIR}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "${STAGING}"' EXIT
 mkdir -p "${STAGING}/config" "${STAGING}/tools"
-cp -a mcp package.json node_modules "${STAGING}/"
+cp -a mcp agent package.json node_modules "${STAGING}/"
 cp config/agent.json "${STAGING}/config/"
 cp tools/mcp-call.js "${STAGING}/tools/"
 
