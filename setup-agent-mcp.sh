@@ -2,8 +2,9 @@
 # Installs the agent's MCP server and launcher code (docs/PIANO-AGENTE.md, phases 2-3) in /opt/raspi-agent.
 # The copy belongs to root: the raspi-agent user can run it but not change it,
 # and it cannot read the project's .env (Telegram token, main DB password).
-# Run it again after every "git pull" that touches mcp/, agent/ or config/agent.json
-# (then: sudo systemctl restart raspi-agent-launcher).
+# Run it again after every "git pull" that touches mcp/, agent/ or config/agent.json:
+# it also restarts raspi-agent-launcher (which reads its configuration only at
+# startup), waiting for the job in progress to finish.
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,7 +76,27 @@ sudo chmod 640 "${MCP_CONFIG}"
 echo "[+] Installing ${AGENT_HOME}/workspace/CLAUDE.md"
 sudo install -m 644 -o root -g "${AGENT_USER}" agent/workspace/CLAUDE.md "${AGENT_HOME}/workspace/CLAUDE.md"
 
-# ─── 4. Smoke test as the agent user (0 tokens) ────────────────────────────
+# ─── 4. Restart the launcher: it reads config/agent.json only at startup ───
+# RASPI_AGENT_NO_RESTART=1: setup-agent-launcher.sh restarts it by itself.
+# A restart kills a running Claude job (already counted in the budget):
+# wait for it to end, at most the job timeout.
+LAUNCHER="raspi-agent-launcher"
+if [[ "${RASPI_AGENT_NO_RESTART:-0}" != "1" ]] && systemctl is-active --quiet "${LAUNCHER}"; then
+	WAIT_S="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("config/agent.json")).launcher?.timeoutSeconds ?? 300)')"
+	if pgrep -u "${AGENT_USER}" -f claude > /dev/null; then
+		echo "[…] The agent is working: waiting up to ${WAIT_S} s before restarting ${LAUNCHER}"
+		for ((i = 0; i < WAIT_S; i += 5)); do
+			pgrep -u "${AGENT_USER}" -f claude > /dev/null || break
+			sleep 5
+		done
+	fi
+	echo "[+] Restarting ${LAUNCHER}"
+	sudo systemctl restart "${LAUNCHER}"
+elif ! systemctl is-active --quiet "${LAUNCHER}"; then
+	echo "[i] ${LAUNCHER} not running: nothing to restart"
+fi
+
+# ─── 5. Smoke test as the agent user (0 tokens) ────────────────────────────
 echo "[?] Calling get_service_health as ${AGENT_USER}..."
 if sudo -u "${AGENT_USER}" -H "${NODE_BIN}" --env-file="${AGENT_ENV}" "${INSTALL_DIR}/tools/mcp-call.js" get_service_health; then
 	echo "[✓] MCP server working"

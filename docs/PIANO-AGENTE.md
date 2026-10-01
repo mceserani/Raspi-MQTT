@@ -16,7 +16,7 @@
 
 **Fase 3a verificata sul Pi (30/09):** lanciatore `raspi-agent-launcher` e `/ask` funzionano. Budget: **10 esecuzioni al giorno, di cui al massimo 5 con Sonnet**. Documentazione: [lanciatore.md](lanciatore.md).
 
-**Fase 3b verificata sul Pi (30/09):** `CLAUDE.md` dell'agente, triage automatico degli eventi (Haiku, a gruppi, al massimo uno ogni 60 min, 10 min con un critical), indagini con Sonnet su richiesta del triage (max 2 al giorno), riserva di budget per `/ask` (il triage lascia sempre 3 esecuzioni libere), `agent_status` aggiornato dal supervisore. Il triage funziona e il contatore delle esecuzioni sale. Attenzione: dopo `./setup-agent-mcp.sh` va **sempre** riavviato il lanciatore (`sudo systemctl restart raspi-agent-launcher`), che legge `config/agent.json` solo all'avvio: senza riavvio i lavori `triage` venivano rifiutati come tipo sconosciuto. Possibile miglioramento (proposto, non fatto): far riavviare il lanciatore allo script.
+**Fase 3b verificata sul Pi (30/09):** `CLAUDE.md` dell'agente, triage automatico degli eventi (Haiku, a gruppi, al massimo uno ogni 60 min, 10 min con un critical), indagini con Sonnet su richiesta del triage (max 2 al giorno), riserva di budget per `/ask` (il triage lascia sempre 3 esecuzioni libere), `agent_status` aggiornato dal supervisore. Il triage funziona e il contatore delle esecuzioni sale. Il lanciatore legge `config/agent.json` solo all'avvio: dal 01/10 `./setup-agent-mcp.sh` lo riavvia da solo, dopo aver aspettato l'eventuale lavoro in corso.
 
 Nei prossimi giorni: annotare i triage inutili o sbagliati (servono a migliorare `CLAUDE.md` e le soglie) e, da venerdì 2026-10-02, riportare le osservazioni del supervisore (eventi falsi o mancanti, segno della corrente in scarica, registro 405).
 
@@ -25,7 +25,7 @@ Nei prossimi giorni: annotare i triage inutili o sbagliati (servono a migliorare
 Passi sul Pi per la 3c:
 1. `cd ~/Raspi-MQTT && git pull && npm install`
 2. `sudo systemctl restart raspi-supervisor` → nel log `Report programmati: giornaliero alle 18:00, settimanale il venerdì alle 15:00.`
-3. `./setup-agent-mcp.sh` e poi **`sudo systemctl restart raspi-agent-launcher`**
+3. `./setup-agent-mcp.sh` (riavvia anche il lanciatore)
 4. `mcp-call get_report_data` (vedi [mcp.md](mcp.md)), poi con `'{"from":"-7d"}'`
 5. `/report` da Telegram; alle 18:00 deve arrivare il report giornaliero.
 

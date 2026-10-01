@@ -363,8 +363,7 @@ Se è installato il livello di monitoraggio:
 ```bash
 npm install
 sudo systemctl restart raspi-supervisor
-./setup-agent-mcp.sh                       # ricopia server MCP, lanciatore e CLAUDE.md in /opt e nel workspace
-sudo systemctl restart raspi-agent-launcher
+./setup-agent-mcp.sh                       # ricopia server MCP, lanciatore e CLAUDE.md e riavvia il lanciatore
 ```
 
 Solo i profili batteria sono cambiati: basta `sudo systemctl reload raspi-supervisor`.

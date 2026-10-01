@@ -13,7 +13,8 @@ INSTALL_DIR="/opt/raspi-agent"
 CLAUDE_BIN="${AGENT_HOME}/.local/bin/claude"
 
 cd "${PROJECT_DIR}"
-./setup-agent-mcp.sh
+# The service is (re)started below: no restart inside setup-agent-mcp.sh
+RASPI_AGENT_NO_RESTART=1 ./setup-agent-mcp.sh
 
 if ! sudo test -x "${CLAUDE_BIN}"; then
 	echo "Error: Claude Code not found in ${CLAUDE_BIN}. Run: ./setup-agent-prereqs.sh --install-claude"
@@ -61,4 +62,4 @@ echo
 echo "Useful checks:"
 echo "  journalctl -u raspi-agent-launcher -f"
 echo "  From Telegram: /status (line 'Agente: in attesa …'), then /ask <domanda>"
-echo "  Budget: edit config/agent.json (launcher), then ./setup-agent-mcp.sh and sudo systemctl restart raspi-agent-launcher"
+echo "  Budget: edit config/agent.json (launcher), then ./setup-agent-mcp.sh (it restarts the launcher)"

@@ -63,4 +63,4 @@ La **riserva** è il numero di esecuzioni che un lavoro automatico deve lasciare
 
 Le istruzioni dell'agente sono in [`agent/workspace/CLAUDE.md`](../agent/workspace/CLAUDE.md), installato da `setup-agent-mcp.sh` in `~raspi-agent/workspace/CLAUDE.md` (proprietà di root: l'agente non può riscriverle). Claude Code lo carica a ogni esecuzione.
 
-Dopo una modifica: `./setup-agent-mcp.sh` e `sudo systemctl restart raspi-agent-launcher`. Il conteggio del giorno è in `~raspi-agent/.local/state/raspi-agent/budget.json`.
+Dopo una modifica: `./setup-agent-mcp.sh`, che riavvia anche il lanciatore (legge `config/agent.json` solo all'avvio). Se l'agente sta lavorando, lo script aspetta che finisca, al massimo `timeoutSeconds`. Il conteggio del giorno è in `~raspi-agent/.local/state/raspi-agent/budget.json`.
