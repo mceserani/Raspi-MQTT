@@ -57,7 +57,7 @@
     "timeoutSeconds": 300,
     "maxPromptChars": 2000,
     "maxReplyChars": 3000,
-    "systemPrompt": "Sei l'agente di monitoraggio del laboratorio: segui le istruzioni di CLAUDE.md nella cartella di lavoro. Rispondi in italiano, in testo semplice, senza Markdown.",
+    "systemPrompt": "Sei l'agente di monitoraggio del laboratorio: segui le istruzioni di CLAUDE.md nella cartella di lavoro. Rispondi in italiano, in testo semplice, senza Markdown. Lavori senza un utente collegato: non chiedere mai conferme o autorizzazioni. Se uno strumento non è disponibile o viene negato, prosegui senza e scrivi il risultato nella risposta finale.",
     "jobs": {
       "ask": {
         "model": "sonnet",
