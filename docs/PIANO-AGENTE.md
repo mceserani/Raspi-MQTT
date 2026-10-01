@@ -29,6 +29,8 @@ Passi sul Pi per la 3c:
 4. `mcp-call get_report_data` (vedi [mcp.md](mcp.md)), poi con `'{"from":"-7d"}'`
 5. `/report` da Telegram; alle 18:00 deve arrivare il report giornaliero.
 
+**Pulizia del database (01/10):** scritta con `dryRun: true`. Sul Pi, dopo il riavvio del supervisore: dalla notte successiva controllare nel log le righe `[RETENTION] would delete`; se i numeri tornano, `dryRun: false` in `config/supervisor.json` e riavvio. Con i dati attuali (circa 1,5 giorni) per due settimane non c'è nulla da cancellare. Nei dati del 01/10 non ci sono scariche (`run_state` solo 0 e 1): per il segno della corrente serve una prova di scarica.
+
 ### Prossimo passo di sviluppo
 
 Dopo la verifica della 3c e le osservazioni del supervisore (venerdì 2026-10-02): **fase 4a**, tabella `battery_cycles` e `get_battery_cycles` (cicli riconosciuti dai cambi di `run_state`, capacità, energia, efficienza). Prima serve sapere il segno della corrente in scarica.
@@ -77,7 +79,7 @@ Rilevamento automatico porte seriali: `modbus-autodetect.js`.
 - Log journald molto verbosi (`[DEBUG]` a ogni ciclo) → l'agente non deve leggere i log grezzi.
 - `labsens` divide per 100 senza gestire il segno → temperature negative errate.
 - Topic lab senza retain; soglia "stale" della dashboard a 15 s con polling a 1 s.
-- Nessuna politica di retention sul DB (crescita illimitata).
+- Nessuna politica di retention sul DB (crescita illimitata). → risolto dalla pulizia notturna del supervisore (fase 5a); misura sul Pi del 01/10: circa 22 MB al giorno, 100 GB liberi.
 - `write_register` libero nel bridge: pericoloso se esposto a un agente.
 
 ---
@@ -300,7 +302,8 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 4a | `battery_cycles` + `get_battery_cycles` | ⏳ |
 | 4b | Procedure batteria (macchina a stati) | ⏳ |
 | 4c | Profili reali | 🟡 primo profilo `liion-18650-2600` (limiti prudenti, da verificare sul banco); altri tipi da definire |
-| 5 | Opzionale: retention DB, snapshot JSON | da decidere |
+| 5a | Pulizia del database (`retention`): grezzi del laboratorio e della batteria ferma 14 giorni, prove batteria sempre, riassunti al minuto 1 anno | ✅ fatto, parte in prova a vuoto (`dryRun`) |
+| 5b | Opzionale: snapshot JSON per le dashboard | da decidere |
 
 ### Note di implementazione
 

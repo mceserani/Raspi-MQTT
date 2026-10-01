@@ -113,5 +113,19 @@
     "weekly": { "enabled": true, "day": "venerdì", "time": "15:00" }
   },
 
+  "retention": {
+    "$comment": "Pulizia notturna del database. dryRun: true = conta e scrive nel log cosa cancellerebbe, senza cancellare. Giorni: labRawDays dati grezzi del laboratorio; batteryIdleDays righe della batteria ferma, tranne quelle entro testMarginMinutes da una prova (riposi); batteryTestDays righe delle prove (0 = mai); summaryMinuteDays riassunti al minuto (0 = mai). I riassunti orari e gli eventi restano sempre. Minimo 8 giorni per i dati grezzi (report settimanale).",
+    "enabled": true,
+    "dryRun": true,
+    "time": "03:00",
+    "labRawDays": 14,
+    "batteryIdleDays": 14,
+    "testMarginMinutes": 60,
+    "batteryTestDays": 0,
+    "summaryMinuteDays": 365,
+    "batchRows": 5000,
+    "batchPauseMs": 200
+  },
+
   "statusPublishSeconds": 5
 }

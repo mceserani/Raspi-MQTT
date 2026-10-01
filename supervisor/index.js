@@ -14,6 +14,7 @@ import { HealthMonitor } from './health.js';
 import { Interlock } from './interlock.js';
 import { RuleEngine } from './rules.js';
 import { ReportScheduler } from './reports.js';
+import { Retention } from './retention.js';
 import { Triage } from './triage.js';
 import { Notifier, TelegramBot } from './telegram.js';
 
@@ -63,6 +64,7 @@ const interlock = new Interlock(config.interlock, {
 });
 const health = new HealthMonitor(config.health);
 const aggregator = new Aggregator({ db, state, config: config.aggregation, tables: env.tables });
+const retention = new Retention({ db, state, config: config.retention ?? { enabled: false }, tables: env.tables });
 
 function activeProfile() {
 	return resolveActiveProfile(profiles, {
@@ -247,6 +249,7 @@ const timers = [
 	// The last report sent is in supervisor_state: nothing before it is loaded
 	setInterval(() => {
 		if (stateLoaded) reports.tick().catch((error) => console.error('[ERROR] Reports failed:', error.message));
+		if (stateLoaded) retention.tick().catch((error) => console.error('[ERROR] Retention failed:', error.message));
 	}, 30000)
 ];
 engine.setHealth(await health.check());
@@ -302,7 +305,7 @@ if (bot.enabled) {
 	console.warn('[WARN] TELEGRAM_BOT_TOKEN not set: notifications only in the log');
 }
 
-console.log(`[INFO] raspi-supervisor running. ${reports.describe()}`);
+console.log(`[INFO] raspi-supervisor running. ${reports.describe()} ${retention.describe()}`);
 
 // A bug in a secondary task must not take the interlock down with it
 process.on('unhandledRejection', (error) => {

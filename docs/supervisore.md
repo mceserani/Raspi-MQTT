@@ -104,13 +104,28 @@ Il lavoro parte `delayMinutes` dopo l'orario (così l'ultima ora è già nei ria
 
 L'agente parte dai numeri di `get_report_data` e dalle proprie note (`report-giornaliero`, `report-settimanale`), così ogni report descrive le novità rispetto ai precedenti. Il venerdì arrivano entrambi i report.
 
+## Pulizia del database
+
+Sezione `retention` di `config/supervisor.json`. Ogni notte alle `time` (03:00) il supervisore cancella:
+
+| Dati | Dopo | Chiave |
+|---|---|---|
+| Grezzi del laboratorio (`labsens_measurements`) | 14 giorni | `labRawDays` |
+| Grezzi della batteria ferma (`run_state = 0`) | 14 giorni | `batteryIdleDays` |
+| Grezzi della batteria durante le prove | mai (`0`) | `batteryTestDays` |
+| Riassunti al minuto | 365 giorni | `summaryMinuteDays` |
+
+I riassunti orari e gli eventi non vengono mai cancellati. Le righe della batteria ferma entro `testMarginMinutes` (60) da una carica o una scarica restano: i riposi fanno parte della prova. Non si cancella nulla che le aggregazioni non abbiano già riassunto. Per i dati grezzi il minimo è 8 giorni, perché il report settimanale li legge. La cancellazione procede a blocchi di `batchRows` righe, con una pausa tra un blocco e l'altro, così i servizi continuano a scrivere.
+
+Con `dryRun: true` (impostazione iniziale) il supervisore non cancella nulla: scrive nel log quante righe cancellerebbe (`[RETENTION] would delete: …`). Dopo aver controllato, mettere `dryRun: false` e riavviare il supervisore. L'esito dell'ultima esecuzione è in `supervisor_state` (`retention.last`). MariaDB non riduce i file: lo spazio liberato viene riusato per i dati nuovi.
+
 ## Tabelle
 
 | Tabella | Contenuto |
 |---|---|
 | `supervisor_events` | Un evento per condizione: apertura, gravità attuale e di picco, messaggio, dettagli JSON, `resolved_at`, `agent_status` (`pending` per warning/critical, `skip` per info: lo userà l'agente) |
 | `summary_minute`, `summary_hour` | Per ogni bucket, sorgente (`lab`/`battery`) e grandezza: `samples`, media, min, max, p95, `max_gap_s`. I bucket senza dati sono scritti con `samples = 0` |
-| `supervisor_state` | Stato persistente: profilo dichiarato, latch dell'interblocco, avanzamento delle aggregazioni, ultimo report programmato inviato |
+| `supervisor_state` | Stato persistente: profilo dichiarato, latch dell'interblocco, avanzamento delle aggregazioni, ultimo report programmato inviato, ultima pulizia |
 
 Le date sono in ora locale, come nelle tabelle esistenti. Se MariaDB non risponde il supervisore continua a funzionare: gli eventi restano in coda e le aggregazioni recuperano quando torna.
 
