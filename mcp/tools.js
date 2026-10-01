@@ -1,4 +1,5 @@
 import { checkReadonlySql, compactRows, formatLocal, parseTime, roundValue } from './format.js';
+import { buildReportData, floorToHour } from './report.js';
 import { AGENT_COMMANDS, commandBounds, statusAgeSeconds, validateBatteryCommand } from './validation.js';
 
 // Tool implementations of the MCP server, independent of the MCP transport
@@ -16,7 +17,8 @@ const RUN_STATES = { 0: 'ferma', 1: 'carica', 2: 'scarica' };
 const SEVERITIES = ['info', 'warning', 'critical'];
 const GRANULARITY_MS = { minute: 60000, hour: 3600000, day: 86400000 };
 
-export function createTools({ bus, db, notes, config, now = () => Date.now() }) {
+export function createTools({ bus, db, notes, config, batteryTable = 'battery_measurements', now = () => Date.now() }) {
+	if (!/^\w+$/.test(batteryTable)) throw new Error(`Invalid table name: ${batteryTable}`);
 	const commandTimes = [];
 
 	async function currentStatus() {
@@ -178,6 +180,28 @@ export function createTools({ bus, db, notes, config, now = () => Date.now() }) 
 				{ rowLimit: max }
 			);
 			return compactRows(rows, { ...config.queries, maxRows: max });
+		},
+
+		async get_report_data({ from = '-24h', to = 'now' }) {
+			const t = now();
+			// Whole hours: the report is built on the hourly summaries
+			const fromMs = floorToHour(parseTime(from, t));
+			const toMs = floorToHour(parseTime(to, t));
+			if (!(fromMs < toMs)) throw new ToolError('serve almeno un\'ora intera tra "from" e "to"');
+			const maxDays = config.reports?.maxDays ?? 31;
+			if (toMs - fromMs > maxDays * 86400000) throw new ToolError(`intervallo troppo lungo (massimo ${maxDays} giorni)`);
+			try {
+				return await buildReportData({
+					db,
+					fromMs,
+					toMs,
+					references: config.reports?.references ?? {},
+					batteryTable,
+					maxGroups: config.reports?.maxEventGroups ?? 15
+				});
+			} catch (error) {
+				throw new ToolError(`errore MariaDB: ${error.sqlMessage ?? error.message}`);
+			}
 		},
 
 		async query_readonly({ sql }) {

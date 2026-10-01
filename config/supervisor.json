@@ -104,5 +104,14 @@
     "maxEscalationsPerDay": 2
   },
 
+  "reports": {
+    "$comment": "Report programmati dell'agente (giornaliero con Haiku, settimanale con Sonnet: modelli in config/agent.json). Orari locali; day: nome del giorno o numero (0 = domenica). delayMinutes: attesa dopo l'orario perché l'ultima ora sia aggregata. Se il lanciatore non è disponibile entro maxDelayHours il report salta.",
+    "enabled": true,
+    "delayMinutes": 2,
+    "maxDelayHours": 3,
+    "daily": { "enabled": true, "time": "18:00" },
+    "weekly": { "enabled": true, "day": "venerdì", "time": "15:00" }
+  },
+
   "statusPublishSeconds": 5
 }

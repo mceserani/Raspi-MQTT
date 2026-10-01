@@ -39,6 +39,16 @@
     "maxBytes": 16384
   },
 
+  "reports": {
+    "$comment": "Strumento get_report_data. references: valori guida su medie di 24 h (linee guida OMS 2021, µg/m³).",
+    "maxDays": 31,
+    "maxEventGroups": 15,
+    "references": {
+      "pm2_5": { "value": 15, "basis": "OMS 2021, media 24 h" },
+      "pm10": { "value": 45, "basis": "OMS 2021, media 24 h" }
+    }
+  },
+
   "launcher": {
     "$comment": "Lanciatore dell'agente (fase 3a). Budget in esecuzioni al giorno (quota dell'abbonamento condivisa): un lavoro Sonnet oltre maxSonnetRunsPerDay passa a Haiku. Tipi di lavoro: modello, numero massimo di turni e strumenti MCP ammessi.",
     "maxRunsPerDay": 10,
@@ -52,7 +62,7 @@
       "ask": {
         "model": "sonnet",
         "maxTurns": 12,
-        "tools": ["get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes"]
+        "tools": ["get_report_data", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes"]
       },
       "triage": {
         "model": "haiku",
@@ -65,6 +75,23 @@
         "maxTurns": 20,
         "reserve": 2,
         "tools": ["get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "write_notes", "send_telegram"]
+      },
+      "report_daily": {
+        "model": "haiku",
+        "maxTurns": 10,
+        "reserve": 1,
+        "tools": ["get_report_data", "get_live_status", "get_summary", "get_events", "read_notes", "write_notes"]
+      },
+      "report_weekly": {
+        "model": "sonnet",
+        "maxTurns": 20,
+        "reserve": 1,
+        "tools": ["get_report_data", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "write_notes"]
+      },
+      "report": {
+        "model": "sonnet",
+        "maxTurns": 12,
+        "tools": ["get_report_data", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes"]
       },
       "test": {
         "model": "haiku",

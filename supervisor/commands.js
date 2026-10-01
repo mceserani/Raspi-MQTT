@@ -6,7 +6,7 @@ export const BOT_COMMANDS = [
 	{ command: 'eventi', description: 'Eventi aperti' },
 	{ command: 'battery', description: 'Profilo batteria: /battery [nome|auto]' },
 	{ command: 'reset', description: 'Riarma l\'interblocco dopo le verifiche' },
-	{ command: 'report', description: 'Report dell\'agente (fase 3)' },
+	{ command: 'report', description: 'Report dell\'agente: /report [giorno|settimana]' },
 	{ command: 'ask', description: 'Domanda all\'agente: /ask <domanda>' },
 	{ command: 'help', description: 'Elenco dei comandi' }
 ];
@@ -100,7 +100,7 @@ export function formatAgent(agent) {
 	return `Agente: ${activity}${agent.queued ? `, ${agent.queued} in coda` : ''} · oggi ${used}/${max} esecuzioni (Sonnet ${sonnetUsed}/${sonnetMax})`;
 }
 
-// ctx: status(), stop(), openEvents(), profiles(), setManualProfile(name|null), resetInterlock(), askAgent(text), now()
+// ctx: status(), stop(), openEvents(), profiles(), setManualProfile(name|null), resetInterlock(), askAgent(text), requestReport(period), now()
 export function createCommandHandler(ctx) {
 	return async (command, args) => {
 		switch (command) {
@@ -148,8 +148,10 @@ export function createCommandHandler(ctx) {
 				return result.ok ? `🤖 Domanda inviata all'agente.\n${formatAgent(result.agent)}` : `⚠️ ${result.message}`;
 			}
 
-			case 'report':
-				return 'Il report dell\'agente arriverà con la fase 3c.';
+			case 'report': {
+				const result = await ctx.requestReport(args[0]?.toLowerCase() ?? 'giorno');
+				return result.ok ? `🤖 Report chiesto all'agente.\n${formatAgent(result.agent)}` : `⚠️ ${result.message}`;
+			}
 
 			default:
 				return `Comando sconosciuto: /${command}\n\n${HELP}`;

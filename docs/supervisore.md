@@ -80,7 +80,7 @@ Profilo attivo: dichiarazione manuale (`/battery <nome>`) oppure `batteryTypeCod
 | `/battery [nome\|auto]` | Mostra o dichiara il profilo batteria |
 | `/reset` | Riarma l'interblocco dopo le verifiche |
 | `/ask <domanda>` | Domanda all'agente sui dati: la risposta arriva con il prefisso 🤖 (vedi [lanciatore.md](lanciatore.md)) |
-| `/report` | Report dell'agente (fase 3c) |
+| `/report [giorno\|settimana]` | Report dell'agente sulle ultime 24 ore (default) o sugli ultimi 7 giorni, con Sonnet |
 | `/help` | Elenco dei comandi (anche `/start`, inviato da Telegram all'apertura della chat) |
 
 Notifiche: eventi dalla gravità `notifyMinSeverity` in su, rientri, al massimo `maxMessagesPerMinute` messaggi al minuto (i critical passano sempre).
@@ -93,13 +93,24 @@ L'agente valuta gli eventi, avvisa l'utente solo se aggiunge informazioni utili,
 
 `agent_status` di un evento: `skip` (info, non valutato) → `pending` → `queued` → `handled` (triage concluso) / `escalated` (indagine chiesta) / `error` (esecuzione fallita, non ripetuta). Se il budget non basta l'evento torna `pending` e viene ripreso al triage successivo. Gli allarmi del supervisore partono comunque subito: il triage aggiunge solo la lettura dell'agente.
 
+## Report programmati
+
+Sezione `reports` di `config/supervisor.json`. Il supervisore manda all'agente:
+
+- il **report giornaliero** alle `daily.time` (18:00): lavoro `report_daily` (Haiku) sulle 24 ore precedenti;
+- il **report settimanale** il `weekly.day` alle `weekly.time` (venerdì, 15:00): lavoro `report_weekly` (Sonnet) sui 7 giorni precedenti.
+
+Il lavoro parte `delayMinutes` dopo l'orario (così l'ultima ora è già nei riassunti) e il report arriva su Telegram con il prefisso 🤖. Se a quell'ora il lanciatore non è attivo il supervisore riprova fino a `maxDelayHours` ore dopo, poi salta il report e lo scrive nel log. L'ultimo report inviato è in `supervisor_state` (`reports.daily.lastSlot`, `reports.weekly.lastSlot`): un riavvio non lo ripete. All'avvio il log riporta gli orari (`Report programmati: …`); un orario o un giorno scritto male blocca l'avvio con un messaggio chiaro.
+
+L'agente parte dai numeri di `get_report_data` e dalle proprie note (`report-giornaliero`, `report-settimanale`), così ogni report descrive le novità rispetto ai precedenti. Il venerdì arrivano entrambi i report.
+
 ## Tabelle
 
 | Tabella | Contenuto |
 |---|---|
 | `supervisor_events` | Un evento per condizione: apertura, gravità attuale e di picco, messaggio, dettagli JSON, `resolved_at`, `agent_status` (`pending` per warning/critical, `skip` per info: lo userà l'agente) |
 | `summary_minute`, `summary_hour` | Per ogni bucket, sorgente (`lab`/`battery`) e grandezza: `samples`, media, min, max, p95, `max_gap_s`. I bucket senza dati sono scritti con `samples = 0` |
-| `supervisor_state` | Stato persistente: profilo dichiarato, latch dell'interblocco, avanzamento delle aggregazioni |
+| `supervisor_state` | Stato persistente: profilo dichiarato, latch dell'interblocco, avanzamento delle aggregazioni, ultimo report programmato inviato |
 
 Le date sono in ora locale, come nelle tabelle esistenti. Se MariaDB non risponde il supervisore continua a funzionare: gli eventi restano in coda e le aggregazioni recuperano quando torna.
 

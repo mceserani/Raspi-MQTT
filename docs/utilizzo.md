@@ -277,11 +277,12 @@ Con il livello di monitoraggio installato, il sistema si usa anche dal bot Teleg
 | `/battery [nome\|auto]` | Mostra o dichiara il profilo della batteria collegata: va fatto **prima** di avviare carica o scarica |
 | `/reset` | Riarma l'interblocco dopo averne verificato la causa |
 | `/ask <domanda>` | Domanda all'agente sui dati, per esempio `/ask com'è andato il PM2.5 nelle ultime 6 ore?` |
+| `/report [giorno\|settimana]` | Report dell'agente sulle ultime 24 ore o sugli ultimi 7 giorni |
 | `/help` | Elenco dei comandi |
 
 Messaggi che si ricevono:
 
 - ⚠️ / 🚨 dal supervisore: un evento warning / critical si apre; ✅ quando rientra; 🔺 se peggiora.
-- 🤖 dall'agente: risposte a `/ask`, valutazioni del triage (solo se aggiungono qualcosa agli allarmi), conclusioni delle indagini, notifiche dei comandi batteria dell'agente (eseguiti o rifiutati).
+- 🤖 dall'agente: report giornaliero (ogni giorno alle 18:00) e settimanale (venerdì alle 15:00), risposte a `/ask` e `/report`, valutazioni del triage (solo se aggiungono qualcosa agli allarmi), conclusioni delle indagini, notifiche dei comandi batteria dell'agente (eseguiti o rifiutati).
 
 L'agente ha un budget di esecuzioni al giorno (oggi 10, di cui 5 con Sonnet): `/status` mostra quante ne restano. Dettagli in [supervisore.md](supervisore.md) e [lanciatore.md](lanciatore.md).

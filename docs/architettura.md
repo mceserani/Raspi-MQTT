@@ -300,7 +300,7 @@ flowchart LR
     MCP -- "supervisor/status, command/request,<br/>supervisor/agent/*" --> MQ
 ```
 
-- **Supervisore** (`supervisor/`, servizio `raspi-supervisor`): deterministico, non consuma token. Valuta regole e soglie sui dati MQTT, apre e chiude eventi, ferma la batteria se i valori misurati escono dal profilo (interblocco), calcola i riassunti per minuto e per ora, gestisce il bot Telegram (unico a conoscerne il token) e passa gli eventi all'agente per il triage. Vedi [supervisore.md](supervisore.md).
+- **Supervisore** (`supervisor/`, servizio `raspi-supervisor`): deterministico, non consuma token. Valuta regole e soglie sui dati MQTT, apre e chiude eventi, ferma la batteria se i valori misurati escono dal profilo (interblocco), calcola i riassunti per minuto e per ora, gestisce il bot Telegram (unico a conoscerne il token), passa gli eventi all'agente per il triage e gli chiede i report programmati. Vedi [supervisore.md](supervisore.md).
 - **Lanciatore** (`agent/`, servizio `raspi-agent-launcher`, utente `raspi-agent`): riceve i lavori, li esegue uno alla volta con Claude Code entro un budget giornaliero di esecuzioni. Vedi [lanciatore.md](lanciatore.md).
 - **Server MCP** (`mcp/`): gli unici strumenti dell'agente. Legge lo stato dal supervisore e il database in sola lettura, valida i comandi batteria contro il profilo attivo, passa messaggi e audit al supervisore. Vedi [mcp.md](mcp.md).
 

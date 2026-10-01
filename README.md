@@ -18,7 +18,7 @@ Il controller batteria può anche essere **comandato da remoto** via MQTT (impos
 
 Sono incluse due **dashboard da terminale** per consultare i dati in tempo reale e inviare comandi, utilizzabili anche da un PC remoto.
 
-Sopra questi servizi c'è un **livello di monitoraggio** facoltativo: un supervisore deterministico (regole, eventi, interblocco di sicurezza della batteria, riassunti, bot Telegram) e un **agente Claude** che valuta gli eventi e risponde alle domande sui dati, con un budget giornaliero di esecuzioni. Il piano e lo stato di avanzamento sono in [docs/PIANO-AGENTE.md](docs/PIANO-AGENTE.md).
+Sopra questi servizi c'è un **livello di monitoraggio** facoltativo: un supervisore deterministico (regole, eventi, interblocco di sicurezza della batteria, riassunti, bot Telegram) e un **agente Claude** che valuta gli eventi, scrive i report giornaliero e settimanale e risponde alle domande sui dati, con un budget giornaliero di esecuzioni. Il piano e lo stato di avanzamento sono in [docs/PIANO-AGENTE.md](docs/PIANO-AGENTE.md).
 
 ## Componenti
 
@@ -31,7 +31,7 @@ Sopra questi servizi c'è un **livello di monitoraggio** facoltativo: un supervi
 | `dashboard.js` | client interattivo | dashboard dei sensori di laboratorio |
 | `battery-remote-dashboard.js` | client interattivo | dashboard della batteria con console comandi |
 | `setup-systemd-services.sh` | script | installa e avvia i tre servizi come unità systemd |
-| `supervisor/` | servizio | supervisore: regole ed eventi, interblocco batteria, riassunti, bot Telegram, triage |
+| `supervisor/` | servizio | supervisore: regole ed eventi, interblocco batteria, riassunti, bot Telegram, triage, report programmati |
 | `mcp/` | server MCP | strumenti dell'agente: lettura dei dati, comandi batteria validati, messaggi |
 | `agent/` | servizio | lanciatore dell'agente (Claude Code) con coda e budget; istruzioni in `agent/workspace/CLAUDE.md` |
 | `lib/battery-profiles.js`, `config/` | libreria, configurazione | profili di sicurezza batteria, soglie del supervisore, configurazione dell'agente |
@@ -80,7 +80,7 @@ npm test
 | [docs/riferimento.md](docs/riferimento.md) | Riferimento tecnico: topic e payload MQTT, registri Modbus, schema del database |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Diagnostica, messaggi di log, problemi noti e limitazioni |
 | [docs/PIANO-AGENTE.md](docs/PIANO-AGENTE.md) | Livello di monitoraggio: obiettivi, decisioni, architettura, avanzamento |
-| [docs/supervisore.md](docs/supervisore.md) | Supervisore: regole, interblocco, comandi Telegram, triage, tabelle |
+| [docs/supervisore.md](docs/supervisore.md) | Supervisore: regole, interblocco, comandi Telegram, triage, report, tabelle |
 | [docs/mcp.md](docs/mcp.md) | Server MCP: strumenti dell'agente e sicurezza dei comandi batteria |
 | [docs/lanciatore.md](docs/lanciatore.md) | Lanciatore dell'agente: lavori, budget, configurazione |
 

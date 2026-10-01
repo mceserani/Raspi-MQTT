@@ -26,6 +26,7 @@ export function loadEnvConfig(env = process.env) {
 			password: env.MARIADB_RO_PASSWORD,
 			database: env.MARIADB_DATABASE ?? 'sensor_data'
 		},
+		batteryTable: env.BATTERY_DB_TABLE ?? 'battery_measurements',
 		batteryTopic: env.BATTERY_MQTT_TOPIC ?? 'sensors/battery',
 		statusTopic: env.SUPERVISOR_STATUS_TOPIC ?? 'supervisor/status',
 		agentTopic: env.SUPERVISOR_AGENT_TOPIC ?? 'supervisor/agent',

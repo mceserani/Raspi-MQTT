@@ -19,7 +19,7 @@ const bus = new Bus(env, { log });
 bus.connect();
 const db = new ReadonlyDatabase(env.mariadb, { maxRows: config.queries.maxRows });
 const notes = new NotesStore(env.notesDir, { maxBytes: config.notes.maxBytes });
-const tools = createTools({ bus, db, notes, config });
+const tools = createTools({ bus, db, notes, config, batteryTable: env.batteryTable });
 
 const TIME = 'Tempo relativo (-30m, -6h, -7d), "now" o data/ora locale (2026-09-30 14:00)';
 const readOnly = { readOnlyHint: true, openWorldHint: false };
@@ -55,6 +55,14 @@ const DEFINITIONS = {
 			source: z.string().optional().describe('lab, battery, interlock, health, supervisor, agent'),
 			limit: z.number().int().min(1).max(config.events.maxLimit).optional(),
 			includeDetails: z.boolean().optional().describe('Aggiunge il JSON dei dettagli (più lungo)')
+		},
+		annotations: readOnly
+	},
+	get_report_data: {
+		description: 'Dati già calcolati per un report sul periodo (ore intere): per ogni grandezza di laboratorio e batteria avg/min/max/p95, copertura dei dati, confronto con il periodo precedente di pari durata, ora del giorno di picco e di minimo, confronto con i valori guida; tempo della batteria in ogni stato con carica stimata; eventi raggruppati per condizione con conteggi e durata; esiti del triage. Una sola chiamata al posto di molte get_summary.',
+		inputSchema: {
+			from: z.string().optional().describe(`Inizio, default -24h. ${TIME}`),
+			to: z.string().optional().describe(`Fine, default now. ${TIME}`)
 		},
 		annotations: readOnly
 	},

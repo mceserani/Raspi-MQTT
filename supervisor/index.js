@@ -13,6 +13,7 @@ import { EventManager } from './events.js';
 import { HealthMonitor } from './health.js';
 import { Interlock } from './interlock.js';
 import { RuleEngine } from './rules.js';
+import { ReportScheduler } from './reports.js';
 import { Triage } from './triage.js';
 import { Notifier, TelegramBot } from './telegram.js';
 
@@ -44,6 +45,12 @@ const triage = new Triage({
 	db,
 	state,
 	config: config.triage ?? { enabled: false },
+	publishJob: (job) => client.publishAsync(`${env.agentTopic}/jobs`, JSON.stringify(job), { qos: 1 }),
+	launcherOnline: () => Boolean(agentLink.launcher?.online) && client.connected
+});
+const reports = new ReportScheduler({
+	state,
+	config: config.reports ?? { enabled: false },
 	publishJob: (job) => client.publishAsync(`${env.agentTopic}/jobs`, JSON.stringify(job), { qos: 1 }),
 	launcherOnline: () => Boolean(agentLink.launcher?.online) && client.connected
 });
@@ -235,7 +242,12 @@ const timers = [
 
 	setInterval(() => aggregator.run(), config.aggregation.intervalSeconds * 1000),
 
-	setInterval(() => triage.tick().catch((error) => console.error('[ERROR] Triage failed:', error.message)), (config.triage?.checkSeconds ?? 60) * 1000)
+	setInterval(() => triage.tick().catch((error) => console.error('[ERROR] Triage failed:', error.message)), (config.triage?.checkSeconds ?? 60) * 1000),
+
+	// The last report sent is in supervisor_state: nothing before it is loaded
+	setInterval(() => {
+		if (stateLoaded) reports.tick().catch((error) => console.error('[ERROR] Reports failed:', error.message));
+	}, 30000)
 ];
 engine.setHealth(await health.check());
 
@@ -266,6 +278,16 @@ const handleCommand = createCommandHandler({
 		await client.publishAsync(`${env.agentTopic}/jobs`, JSON.stringify(job), { qos: 1 });
 		return { ok: true, agent: agentLink.launcher };
 	},
+	async requestReport(period) {
+		if (!agentLink.launcher?.online) {
+			return { ok: false, message: 'Il lanciatore dell\'agente non è attivo (raspi-agent-launcher).' };
+		}
+		if (!client.connected) {
+			return { ok: false, message: 'Broker MQTT non connesso.' };
+		}
+		const result = await reports.onDemand(period);
+		return result.ok ? { ok: true, agent: agentLink.launcher } : result;
+	},
 	async resetInterlock() {
 		interlock.reset();
 		events.record({ key: 'interlock:reset', source: 'interlock', type: 'reset', severity: 'info', message: 'Interblocco riarmato da Telegram', details: {} }, Date.now());
@@ -280,7 +302,7 @@ if (bot.enabled) {
 	console.warn('[WARN] TELEGRAM_BOT_TOKEN not set: notifications only in the log');
 }
 
-console.log('[INFO] raspi-supervisor running');
+console.log(`[INFO] raspi-supervisor running. ${reports.describe()}`);
 
 // A bug in a secondary task must not take the interlock down with it
 process.on('unhandledRejection', (error) => {

@@ -19,7 +19,7 @@ Log: `journalctl -u raspi-agent-launcher -f`.
 
 ## Come funziona
 
-1. Il supervisore pubblica un lavoro su `supervisor/agent/jobs` (`{ jobId, kind, prompt, requestedBy, replyTelegram, eventIds }`): per `/ask`, per il triage degli eventi e per le indagini (vedi [supervisore.md](supervisore.md#triage-degli-eventi)); in 3c anche i report.
+1. Il supervisore pubblica un lavoro su `supervisor/agent/jobs` (`{ jobId, kind, prompt, requestedBy, replyTelegram, eventIds }`): per `/ask` e `/report`, per il triage degli eventi, per le indagini e per i report programmati (vedi [supervisore.md](supervisore.md#triage-degli-eventi) e [supervisore.md](supervisore.md#report-programmati)).
 2. Il lanciatore lo mette in coda (massimo `maxQueue` in attesa) ed esegue **un lavoro alla volta**.
 3. Controlla il **budget giornaliero**. Se è esaurito, rifiuta il lavoro e lo dice all'utente. Se è esaurita solo la quota Sonnet, il lavoro passa a Haiku e la risposta lo segnala.
 4. Lancia `claude -p` nella cartella `~/workspace` con:
@@ -54,9 +54,12 @@ Tipi di lavoro:
 | `ask` | `/ask` da Telegram | Sonnet | 0 | solo lettura (niente comandi batteria né note) |
 | `triage` | supervisore, sugli eventi warning/critical | Haiku | 3 | lettura, note, `send_telegram`, `request_escalation` |
 | `investigate` | supervisore, su `request_escalation` del triage | Sonnet | 2 | lettura, `query_readonly`, note, `send_telegram` |
+| `report_daily` | supervisore, ogni giorno alle 18:00 | Haiku | 1 | lettura (con `get_report_data`), note |
+| `report_weekly` | supervisore, il venerdì alle 15:00 | Sonnet | 1 | lettura, `query_readonly`, note |
+| `report` | `/report` da Telegram | Sonnet | 0 | lettura, `query_readonly`, solo lettura delle note |
 | `test` | manuale | Haiku | 0 | `get_live_status` |
 
-La **riserva** è il numero di esecuzioni che un lavoro automatico deve lasciare libere: con 10 al giorno il triage si ferma a 7 usate e le indagini a 8, così restano sempre esecuzioni per `/ask`. Nessun lavoro automatico può comandare la batteria; per permetterlo in futuro basta aggiungere `send_battery_command` agli strumenti del tipo di lavoro.
+La **riserva** è il numero di esecuzioni che un lavoro automatico deve lasciare libere: con 10 al giorno il triage si ferma a 7 usate, le indagini a 8 e i report programmati a 9, così resta sempre almeno un'esecuzione per `/ask` e `/report`. Nessun lavoro automatico può comandare la batteria; per permetterlo in futuro basta aggiungere `send_battery_command` agli strumenti del tipo di lavoro.
 
 Le istruzioni dell'agente sono in [`agent/workspace/CLAUDE.md`](../agent/workspace/CLAUDE.md), installato da `setup-agent-mcp.sh` in `~raspi-agent/workspace/CLAUDE.md` (proprietà di root: l'agente non può riscriverle). Claude Code lo carica a ogni esecuzione.
 
