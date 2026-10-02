@@ -15,7 +15,7 @@ Lo script aggiorna `/opt/raspi-agent` (lancia `setup-agent-mcp.sh`), controlla C
 - `/status` → deve comparire la riga `Agente: in attesa · oggi 0/10 esecuzioni (Sonnet 0/5)`;
 - `/ask com'è andato il PM2.5 nelle ultime 6 ore?` → il bot conferma l'invio e dopo qualche decina di secondi arriva la risposta con il prefisso 🤖.
 
-Log: `journalctl -u raspi-agent-launcher -f`.
+Log: `journalctl --namespace=raspi-agent -u raspi-agent-launcher -f` (journal separato, vedi [supervisore.md](supervisore.md#log)).
 
 ## Come funziona
 

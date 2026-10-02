@@ -29,6 +29,8 @@ NODE_BIN="$(readlink -f "$(command -v node)")"
 # Created as the agent user: Claude Code also keeps its own state in ~/.local/state
 (cd / && sudo -u "${AGENT_USER}" mkdir -p "${AGENT_HOME}/.local/state/raspi-agent")
 
+./setup-agent-journal.sh
+
 echo "Creating raspi-agent-launcher.service..."
 sudo tee /etc/systemd/system/raspi-agent-launcher.service > /dev/null <<UNIT
 [Unit]
@@ -46,6 +48,8 @@ ExecStart=${NODE_BIN} ${INSTALL_DIR}/agent/launcher.js
 Restart=always
 RestartSec=10
 NoNewPrivileges=true
+# Own persistent journal (setup-agent-journal.sh)
+LogNamespace=raspi-agent
 
 [Install]
 WantedBy=multi-user.target
@@ -60,6 +64,6 @@ systemctl --no-pager --full status raspi-agent-launcher.service || true
 
 echo
 echo "Useful checks:"
-echo "  journalctl -u raspi-agent-launcher -f"
+echo "  journalctl --namespace=raspi-agent -u raspi-agent-launcher -f"
 echo "  From Telegram: /status (line 'Agente: in attesa …'), then /ask <domanda>"
 echo "  Budget: edit config/agent.json (launcher), then ./setup-agent-mcp.sh (it restarts the launcher)"

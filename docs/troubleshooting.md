@@ -29,7 +29,7 @@ journalctl -u raspi-battery -n 50 --no-pager
 
 # 6. livello di monitoraggio (se installato)
 systemctl status raspi-supervisor raspi-agent-launcher --no-pager
-journalctl -u raspi-supervisor -n 50 --no-pager
+journalctl --namespace=raspi-agent -u raspi-supervisor -n 50 --no-pager
 ```
 
 ## Problemi frequenti
@@ -114,9 +114,9 @@ Il terminale deve supportare i codici ANSI e UTF-8. Su Windows usare Windows Ter
 | `setup-agent-mcp.sh`: `raspi-agent cannot run …/node` | Node.js è installato nella home di un utente (nvm). Installarlo a livello di sistema (per esempio pacchetti NodeSource in `/usr/bin`). |
 | `setup-agent-mcp.sh`: `MCP SDK missing` | Eseguire `npm install` nel progetto dopo il `git pull`. |
 | Il bot non risponde | `systemctl status raspi-supervisor`; nel journal un `401` indica un token errato. Senza `TELEGRAM_CHAT_ID` il bot risponde solo con il chat_id. |
-| `/ask` risponde "Il lanciatore dell'agente non è attivo" | `systemctl status raspi-agent-launcher` e `journalctl -u raspi-agent-launcher -n 50`; verificare `CLAUDE_CODE_OAUTH_TOKEN` in `agent.env`. |
+| `/ask` risponde "Il lanciatore dell'agente non è attivo" | `systemctl status raspi-agent-launcher` e `journalctl --namespace=raspi-agent -u raspi-agent-launcher -n 50`; verificare `CLAUDE_CODE_OAUTH_TOKEN` in `agent.env`. |
 | L'agente risponde che il budget è esaurito, o il triage non parte | Budget del giorno usato (`/status`, riga Agente). I lavori automatici lasciano libere alcune esecuzioni per `/ask` ([lanciatore.md](lanciatore.md)). Si azzera a mezzanotte. |
-| Il report delle 18:00 (o del venerdì) non arriva | `journalctl -u raspi-supervisor \| grep -i report`: all'avvio deve comparire `Report programmati`; `Report … skipped` indica il lanciatore non attivo per più di `maxDelayHours`. Un lavoro `report_daily` rifiutato come tipo sconosciuto vuol dire che il lanciatore non è stato riavviato dopo l'aggiornamento: rilanciare `./setup-agent-mcp.sh`. Se il budget del giorno è esaurito il rifiuto arriva su Telegram. |
+| Il report delle 18:00 (o del venerdì) non arriva | `journalctl --namespace=raspi-agent -u raspi-supervisor \| grep -i report`: all'avvio deve comparire `Report programmati`; `Report … skipped` indica il lanciatore non attivo per più di `maxDelayHours`. Un lavoro `report_daily` rifiutato come tipo sconosciuto vuol dire che il lanciatore non è stato riavviato dopo l'aggiornamento: rilanciare `./setup-agent-mcp.sh`. Se il budget del giorno è esaurito il rifiuto arriva su Telegram. |
 | Un comando batteria dell'agente è rifiutato | Comportamento voluto: il motivo è nella notifica. Controllare profilo (`/battery`), interblocco (`/reset` dopo le verifiche) e `commandBounds` in `get_live_status` ([mcp.md](mcp.md)). |
 | Evento `battery:no_profile` | Batteria in marcia senza profilo utilizzabile: dichiararlo con `/battery <nome>`. Fino ad allora l'interblocco è inattivo. |
 | Dopo un `git pull` il comportamento dell'agente non cambia | Rilanciare `./setup-agent-mcp.sh` (riavvia anche il lanciatore): l'agente usa la copia in `/opt/raspi-agent`. |

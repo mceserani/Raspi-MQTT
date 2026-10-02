@@ -12,10 +12,18 @@ I servizi esistenti non vengono modificati: il supervisore si limita a leggere i
 git fetch origin && git checkout feat/agente
 # in .env: TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID (vedi sotto)
 ./setup-supervisor-service.sh
-journalctl -u raspi-supervisor -f
+journalctl --namespace=raspi-agent -u raspi-supervisor -f
 ```
 
 Lo script crea `raspi-supervisor.service` (stesso utente dei servizi esistenti, gruppo `systemd-journal` per leggere i contatori di errore), lo abilita e lo avvia.
+
+### Log
+
+Il supervisore e il lanciatore scrivono in un journal separato (`LogNamespace=raspi-agent`), persistente su disco e limitato a 200 MB (`setup-agent-journal.sh`, lanciato dagli script di installazione). Il journal normale del Raspberry è tenuto in RAM e le righe `[DEBUG]` dei servizi esistenti lo riempiono in meno di un'ora; nel journal separato restano giorni di storia. Per leggerlo serve sempre `--namespace=raspi-agent`, altrimenti `journalctl` non mostra nulla:
+
+```bash
+journalctl --namespace=raspi-agent -u raspi-supervisor --since yesterday | grep RETENTION
+```
 
 ### Telegram
 

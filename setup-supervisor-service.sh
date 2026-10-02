@@ -44,6 +44,8 @@ await loadSupervisorConfig('config/supervisor.json');
 console.log('Configuration OK');
 "
 
+./setup-agent-journal.sh
+
 echo "Creating raspi-supervisor.service..."
 sudo tee /etc/systemd/system/raspi-supervisor.service > /dev/null <<EOF
 [Unit]
@@ -56,6 +58,8 @@ Type=simple
 User=${SERVICE_USER}
 # systemd-journal: read access to the journal for the error counters
 SupplementaryGroups=systemd-journal
+# Own persistent journal (setup-agent-journal.sh)
+LogNamespace=raspi-agent
 WorkingDirectory=${PROJECT_DIR}
 Environment=NODE_ENV=production
 ExecStart=${NODE_BIN} --env-file=.env supervisor/index.js
@@ -78,6 +82,6 @@ systemctl --no-pager --full status raspi-supervisor.service || true
 
 echo
 echo "Useful checks:"
-echo "  journalctl -u raspi-supervisor.service -f"
+echo "  journalctl --namespace=raspi-agent -u raspi-supervisor -f"
 echo "  mosquitto_sub -t supervisor/status -C 1 | python3 -m json.tool"
 echo "  sudo systemctl reload raspi-supervisor   # after editing config/battery-profiles.json"
