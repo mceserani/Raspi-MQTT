@@ -1,5 +1,6 @@
 import * as mariadb from 'mariadb';
 import { PHASES_TABLE } from './cycles.js';
+import { PROCEDURES_TABLE } from './procedures.js';
 
 const SUMMARY_COLUMNS = `
 	bucket_start DATETIME NOT NULL,
@@ -40,7 +41,8 @@ export const SCHEMA = [
 	)`,
 	`CREATE TABLE IF NOT EXISTS summary_minute (${SUMMARY_COLUMNS})`,
 	`CREATE TABLE IF NOT EXISTS summary_hour (${SUMMARY_COLUMNS})`,
-	PHASES_TABLE
+	PHASES_TABLE,
+	PROCEDURES_TABLE
 ];
 
 function isConnectionError(error) {

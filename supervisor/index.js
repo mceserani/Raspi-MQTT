@@ -13,6 +13,7 @@ import { decodeLabValue, labSensorName } from './decode.js';
 import { EventManager } from './events.js';
 import { HealthMonitor } from './health.js';
 import { Interlock } from './interlock.js';
+import { ProcedureRunner, ProcedureStore } from './procedures.js';
 import { RuleEngine } from './rules.js';
 import { ReportScheduler } from './reports.js';
 import { Retention } from './retention.js';
@@ -67,6 +68,83 @@ const health = new HealthMonitor(config.health);
 const aggregator = new Aggregator({ db, state, config: config.aggregation, tables: env.tables });
 const retention = new Retention({ db, state, config: config.retention ?? { enabled: false }, tables: env.tables });
 const cycles = new CycleDetector({ db, state, config: config.cycles, table: env.tables.battery, onPhase: notifyPhase });
+
+// Procedure commands go through the bridge like the dashboards' ones: the ack
+// confirms them and the rules see them as commanded
+const pendingAcks = new Map();
+function sendProcedureCommand(command, value) {
+	const timeoutMs = (config.procedures?.ackTimeoutSeconds ?? 10) * 1000;
+	return new Promise((resolve) => {
+		if (!client.connected) {
+			resolve({ ok: false, message: 'broker MQTT non connesso' });
+			return;
+		}
+		const commandId = `procedure-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+		const timer = setTimeout(() => {
+			pendingAcks.delete(commandId);
+			resolve({ ok: false, message: `nessuna conferma entro ${timeoutMs / 1000} s (bridge o servizio batteria fermi?)` });
+		}, timeoutMs);
+		pendingAcks.set(commandId, (ack) => {
+			clearTimeout(timer);
+			pendingAcks.delete(commandId);
+			resolve({ ok: ack.status === 'ok', message: ack.message ?? ack.status });
+		});
+		const payload = { commandId, command, value, source: 'supervisor-procedure', timestamp: new Date().toISOString() };
+		client.publish(`${env.batteryTopic}/command/request`, JSON.stringify(payload), { qos: 1 });
+	});
+}
+
+const procedures = new ProcedureRunner({
+	config: config.procedures,
+	store: new ProcedureStore(db),
+	state,
+	io: {
+		command: sendProcedureCommand,
+		stop: (source) => sendStop(source),
+		battery: () => engine.battery,
+		context: () => ({ profile: activeProfile(), latched: interlock.latched, ntc: engine.labValue('ntc_temperature') }),
+		notify: (text) => bot.send(text),
+		event: (event) => events.record(event, Date.now()),
+		finished: analyzeProcedure
+	}
+});
+
+// The agent reads the results and reports to the user (costs one run)
+function analyzeProcedure(result) {
+	if (!config.procedures?.analyzeOnEnd || !agentLink.launcher?.online || !client.connected) return;
+	const pad = (n) => String(n).padStart(2, '0');
+	const local = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+	const job = {
+		jobId: `procedure-${result.id}`,
+		kind: 'procedure',
+		prompt: `PROCEDURA CONCLUSA. Id ${result.id}, "${result.name}", esito: ${result.status} (${result.message}). Periodo: da ${local(result.startedAt)} a ${local(result.endedAt)}.
+
+Segui la procedura "Analisi di una procedura" di CLAUDE.md.`,
+		requestedBy: 'supervisor',
+		replyTelegram: true
+	};
+	client.publishAsync(`${env.agentTopic}/jobs`, JSON.stringify(job), { qos: 1 }).catch((error) => console.error('[ERROR] Procedure analysis job:', error.message));
+}
+
+// Requests of the agent's MCP server (start_procedure / stop_procedure)
+function handleProcedureRequest(request) {
+	if (!request?.requestId) return;
+	let result;
+	if (request.action === 'start') {
+		result = procedures.start(request.spec, { requestedBy: 'agent', reason: request.reason ?? null });
+		if (!result.ok) {
+			const message = `Procedura dell'agente rifiutata: ${result.reason}`;
+			events.record({ key: 'procedure:rejected', source: 'procedure', type: 'rejected', severity: 'info', message, details: { spec: request.spec, reason: request.reason } }, Date.now());
+			bot.send(`🤖 ${message}${request.reason ? `
+Motivo della richiesta: ${request.reason}` : ''}`);
+		}
+	} else if (request.action === 'stop') {
+		result = procedures.stop(`fermata dall'agente${request.reason ? `: ${request.reason}` : ''}`);
+	} else {
+		result = { ok: false, reason: `azione sconosciuta: ${request.action}` };
+	}
+	client.publish(`${env.agentTopic}/procedure_reply`, JSON.stringify({ requestId: request.requestId, ...result }), { qos: 1 });
+}
 
 // Only phases that just ended: the first run also goes through the old data
 function notifyPhase(phase) {
@@ -139,6 +217,9 @@ client.on('message', (topic, payloadBuffer) => {
 		}, now);
 	} else if (topic === TOPICS.ack) {
 		engine.onAck(payload, now);
+		if (payload.commandId && pendingAcks.has(payload.commandId)) pendingAcks.get(payload.commandId)(payload);
+	} else if (topic === `${env.agentTopic}/procedure`) {
+		handleProcedureRequest(payload);
 	} else if (topic.startsWith(`${env.agentTopic}/`)) {
 		agentLink.handle(topic.slice(env.agentTopic.length + 1), payload);
 	}
@@ -182,6 +263,7 @@ async function stopBattery(source) {
 		return { stopped: false, message: 'broker MQTT non connesso' };
 	}
 	const sentAt = Date.now();
+	procedures.stop(`stop da ${source}`);
 	sendStop(source);
 	events.record({ key: 'battery:manual_stop', source: 'battery', type: 'manual_stop', severity: 'info', message: `Stop batteria richiesto da ${source}`, details: { source } }, sentAt);
 	const stopped = await waitFor(() => engine.battery?.state.runState === 0 && engine.battery.at > sentAt, 8000);
@@ -203,6 +285,7 @@ function status() {
 		health: health.last,
 		agent: agentLink.launcher,
 		batteryPhase: cycles.inProgress(),
+		procedure: procedures.snapshot(),
 		databaseReady: db.ready
 	};
 }
@@ -230,6 +313,7 @@ db.start(async () => {
 		await state.load();
 		stateLoaded = true;
 		if (!interlock.latched) interlock.restoreLatch(state.get('interlock.latched'));
+		procedures.recover();
 	}
 	await state.flush();
 	eventStore.pump();
@@ -274,6 +358,7 @@ engine.setHealth(await health.check());
 const handleCommand = createCommandHandler({
 	status,
 	stop: stopBattery,
+	procedure: () => procedures.snapshot(),
 	openEvents: () => events.openEvents(),
 	now: () => Date.now(),
 	profiles: () => ({ names: Object.keys(profiles.profiles), active: activeProfile(), manual: state.get('battery.manualProfile') }),

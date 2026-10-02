@@ -276,6 +276,7 @@ Con il livello di monitoraggio installato, il sistema si usa anche dal bot Teleg
 | `/stop` | Ferma subito la batteria |
 | `/battery [nome\|auto]` | Mostra o dichiara il profilo della batteria collegata: va fatto **prima** di avviare carica o scarica |
 | `/reset` | Riarma l'interblocco dopo averne verificato la causa |
+| `/procedura` | Procedura batteria in corso; si avviano chiedendole all'agente, per esempio `/ask fai una prova di capacità: carica completa a 1000 mA, riposo 30 minuti, scarica a 1000 mA fino a 3,0 V` |
 | `/ask <domanda>` | Domanda all'agente sui dati, per esempio `/ask com'è andato il PM2.5 nelle ultime 6 ore?` |
 | `/report [giorno\|settimana]` | Report dell'agente sulle ultime 24 ore o sugli ultimi 7 giorni |
 | `/help` | Elenco dei comandi |

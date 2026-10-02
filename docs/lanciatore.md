@@ -51,15 +51,16 @@ Tipi di lavoro:
 
 | Tipo | Chi lo lancia | Modello | Riserva | Strumenti |
 |---|---|---|---|---|
-| `ask` | `/ask` da Telegram | Sonnet | 0 | solo lettura (niente comandi batteria né note) |
+| `ask` | `/ask` da Telegram | Sonnet | 0 | lettura, `start_procedure` e `stop_procedure` (niente comandi diretti né note) |
 | `triage` | supervisore, sugli eventi warning/critical | Haiku | 3 | lettura, note, `send_telegram`, `request_escalation` |
-| `investigate` | supervisore, su `request_escalation` del triage | Sonnet | 2 | lettura, `query_readonly`, note, `send_telegram` |
+| `investigate` | supervisore, su `request_escalation` del triage | Sonnet | 2 | lettura, `query_readonly`, note, `send_telegram`, `stop_procedure` |
 | `report_daily` | supervisore, ogni giorno alle 18:00 | Haiku | 1 | lettura (con `get_report_data`), note |
 | `report_weekly` | supervisore, il venerdì alle 15:00 | Sonnet | 1 | lettura, `query_readonly`, note |
 | `report` | `/report` da Telegram | Sonnet | 0 | lettura, `query_readonly`, solo lettura delle note |
+| `procedure` | supervisore, a fine procedura batteria (`procedures.analyzeOnEnd`) | Sonnet | 1 | `get_procedures`, `get_battery_cycles`, lettura, note |
 | `test` | manuale | Haiku | 0 | `get_live_status` |
 
-La **riserva** è il numero di esecuzioni che un lavoro automatico deve lasciare libere: con 10 al giorno il triage si ferma a 7 usate, le indagini a 8 e i report programmati a 9, così resta sempre almeno un'esecuzione per `/ask` e `/report`. Nessun lavoro automatico può comandare la batteria; per permetterlo in futuro basta aggiungere `send_battery_command` agli strumenti del tipo di lavoro.
+La **riserva** è il numero di esecuzioni che un lavoro automatico deve lasciare libere: con 10 al giorno il triage si ferma a 7 usate, le indagini a 8 e i report programmati a 9, così resta sempre almeno un'esecuzione per `/ask` e `/report`. Nessun lavoro automatico può comandare la batteria: solo `/ask`, cioè una richiesta esplicita dell'utente, può avviare una procedura; l'indagine può solo fermarla. Per cambiare basta modificare gli strumenti del tipo di lavoro in `config/agent.json`.
 
 Le istruzioni dell'agente sono in [`agent/workspace/CLAUDE.md`](../agent/workspace/CLAUDE.md), installato da `setup-agent-mcp.sh` in `~raspi-agent/workspace/CLAUDE.md` (proprietà di root: l'agente non può riscriverle). Claude Code lo carica a ogni esecuzione.
 

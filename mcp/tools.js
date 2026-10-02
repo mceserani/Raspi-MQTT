@@ -18,6 +18,46 @@ const RUN_STATES = { 0: 'ferma', 1: 'carica', 2: 'scarica' };
 const SEVERITIES = ['info', 'warning', 'critical'];
 const GRANULARITY_MS = { minute: 60000, hour: 3600000, day: 86400000 };
 
+function procedureView(p) {
+	return {
+		id: p.id,
+		name: p.name,
+		step: `${p.step}/${p.steps}`,
+		current: p.current,
+		stepSince: p.stepStartedAt ? formatLocal(p.stepStartedAt, { seconds: false }) : null,
+		startedAt: formatLocal(p.startedAt, { seconds: false }),
+		maxHours: roundValue(p.maxMinutes / 60, 1)
+	};
+}
+
+function parseJson(value) {
+	if (value === null || value === undefined || typeof value === 'object') return value ?? null;
+	try {
+		return JSON.parse(value);
+	} catch {
+		return value;
+	}
+}
+
+const localOrNull = (ms) => (ms ? formatLocal(ms, { seconds: false }) : null);
+
+function procedureRow(row) {
+	const steps = parseJson(row.steps) ?? [];
+	return {
+		id: row.procedure_id,
+		name: row.name,
+		status: row.status,
+		startedAt: localOrNull(row.started_at),
+		endedAt: localOrNull(row.ended_at),
+		requestedBy: row.requested_by,
+		reason: row.reason,
+		profile: row.profile,
+		spec: parseJson(row.spec),
+		results: Array.isArray(steps) ? steps.map((s) => ({ ...s, startedAt: localOrNull(s.startedAt), endedAt: localOrNull(s.endedAt) })) : steps,
+		endMessage: row.end_message
+	};
+}
+
 export function createTools({ bus, db, notes, config, batteryTable = 'battery_measurements', now = () => Date.now() }) {
 	if (!/^\w+$/.test(batteryTable)) throw new Error(`Invalid table name: ${batteryTable}`);
 	const commandTimes = [];
@@ -83,7 +123,8 @@ export function createTools({ bus, db, notes, config, batteryTable = 'battery_me
 				interlock: status.interlock?.latched
 					? { state: 'scattato', at: formatLocal(status.interlock.latched.at), reasons: status.interlock.latched.reasons }
 					: { state: status.interlock?.armed ? 'armato' : 'inattivo' },
-				openEvents: (status.openEvents ?? []).map((e) => ({ severity: e.severity, message: e.message, since: formatLocal(e.openedAt, { seconds: false }) }))
+				openEvents: (status.openEvents ?? []).map((e) => ({ severity: e.severity, message: e.message, since: formatLocal(e.openedAt, { seconds: false }) })),
+				...(status.procedure ? { procedure: procedureView(status.procedure) } : {})
 			};
 		},
 
@@ -224,6 +265,45 @@ export function createTools({ bus, db, notes, config, batteryTable = 'battery_me
 					// Without the open phase the rest is still valid
 				}
 				return buildCyclesResult({ rows: rows.slice(0, max), truncated: rows.length > max, saved, now: now(), sinceMs, maxRestHours: config.cycles?.maxRestHours ?? 24 });
+			} catch (error) {
+				throw new ToolError(`errore MariaDB: ${error.sqlMessage ?? error.message}`);
+			}
+		},
+
+		async start_procedure({ name, steps, repeat, reason }) {
+			const status = await currentStatus();
+			requireSupervisor(status);
+			const spec = { name, steps, ...(repeat ? { repeat } : {}) };
+			const reply = await bus.requestSupervisor('procedure', { action: 'start', spec, reason }, config.procedures?.replyTimeoutSeconds ?? 10);
+			if (reply.timeout) throw new ToolError('nessuna risposta dal supervisore: procedura non avviata');
+			if (!reply.ok) return { started: false, rejected: reply.reason };
+			return {
+				started: true,
+				id: reply.id,
+				steps: reply.steps,
+				maxHours: roundValue(reply.maxMinutes / 60, 1),
+				note: 'la esegue il supervisore: avvio e fine arrivano all\'utente su Telegram; stato con get_live_status o get_procedures'
+			};
+		},
+
+		async stop_procedure({ reason }) {
+			const status = await currentStatus();
+			requireSupervisor(status);
+			const reply = await bus.requestSupervisor('procedure', { action: 'stop', reason }, config.procedures?.replyTimeoutSeconds ?? 10);
+			if (reply.timeout) throw new ToolError('nessuna risposta dal supervisore: per fermare la batteria usa send_battery_command set_run_state 0');
+			return reply.ok ? { stopping: true, id: reply.id, note: 'il supervisore ferma la batteria entro pochi secondi' } : { stopping: false, message: reply.reason };
+		},
+
+		async get_procedures({ limit = 5 }) {
+			const max = Math.min(Math.max(1, limit), 20);
+			try {
+				const rows = await db.query(
+					`SELECT procedure_id, started_at, ended_at, name, status, requested_by, reason, profile, spec, steps, end_message
+					FROM battery_procedures ORDER BY started_at DESC LIMIT ${Number(max)}`,
+					[],
+					{ rowLimit: max }
+				);
+				return { procedures: rows.map(procedureRow) };
 			} catch (error) {
 				throw new ToolError(`errore MariaDB: ${error.sqlMessage ?? error.message}`);
 			}

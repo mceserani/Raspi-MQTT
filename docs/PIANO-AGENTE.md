@@ -2,13 +2,13 @@
 
 > Documento di lavoro per riprendere il progetto in sessioni successive.
 > Stato: **implementazione in corso sul ramo `feat/agente`** — vedi §9 per l'avanzamento.
-> Ultimo aggiornamento: 2026-10-02
+> Ultimo aggiornamento: 2026-10-03
 
 ---
 
-## ▶ Punto di ripartenza (aggiornato 2026-10-02)
+## ▶ Punto di ripartenza (aggiornato 2026-10-03)
 
-**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage), fase 3c (report, verificata sul Pi), pulizia del database (in prova a vuoto) e fase 4a (fasi e cicli della batteria, da verificare sul Pi). Sul PC: 110 test verdi (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
+**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage), fase 3c (report, verificata sul Pi), pulizia del database (in prova a vuoto), fase 4a (fasi e cicli della batteria, verificata sul Pi) e fase 4b (procedure batteria, da verificare sul Pi). Sul PC: 118 test verdi (`npm test`), procedura completa provata con simulatore, bridge e supervisore (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
 
 **Sul Pi (30/09):** passi 1–6 della fase 1 completati (prerequisiti, token Claude, bot Telegram con chat_id, supervisore installato, verifiche MariaDB). Il supervisore gira in osservazione **fino a venerdì mattina (2026-10-02)**: annotare eventi falsi o mancanti, segno della corrente in scarica, comportamento del registro 405.
 
@@ -24,18 +24,21 @@ Nei prossimi giorni: annotare i triage inutili o sbagliati (servono a migliorare
 
 **Pulizia del database:** la prova a vuoto della notte del 02/10 (`retention.last`) avrebbe cancellato 15.590 righe del laboratorio e 12.618 della batteria ferma, anteriori al 18/09: dati di prima del supervisore, mai riassunti. Corretto (02/10): la pulizia non tocca le righe anteriori al primo riassunto orario. Passi sul Pi: `git pull`, `sudo systemctl restart raspi-supervisor`; il 03/10 controllare `SELECT state_value FROM supervisor_state WHERE state_key = 'retention.last'` → tutti i conteggi a 0 (i dati riassunti hanno meno di 14 giorni). Se torna, `dryRun: false` in `config/supervisor.json`; la prima cancellazione vera sarà verso il 14/10. Il log si legge con `journalctl --namespace=raspi-agent -u raspi-supervisor | grep RETENTION` (journal separato e persistente dal 02/10: quello normale è in RAM e i `[DEBUG]` dei servizi esistenti lo riempiono in meno di un'ora). Nei dati del 01/10 non ci sono scariche (`run_state` solo 0 e 1): per il segno della corrente serve una prova di scarica.
 
-**Fase 4a (02/10): fasi e cicli della batteria.** Il supervisore riconosce ogni carica e scarica dai cambi di `run_state` e la salva in `battery_phases`: durata, mAh, Wh, segno della corrente, tensioni, minuti in CC e CV, resistenza interna stimata all'avvio e allo stop. La fase in corso sopravvive ai riavvii (`supervisor_state`, chiave `cycles`). A fine fase arrivano un evento info e un messaggio Telegram 🔋. Nuovo strumento MCP `get_battery_cycles`: fasi, cicli carica → scarica con efficienza coulombica ed energetica, segno osservato della corrente per modo, fase in corso. Il segno non è più un prerequisito: la capacità si integra con il segno e si salva in valore assoluto, e il segno viene registrato. **Basta una scarica per sapere la convenzione:** lo dice il messaggio 🔋 ("corrente misurata negativa/positiva"). La tabella si chiama `battery_phases` (una riga per fase); i cicli si formano nello strumento.
+**Fase 4a verificata sul Pi (03/10):** il supervisore riconosce cariche e scariche dai cambi di `run_state` e le salva in `battery_phases` (durata, mAh, Wh, segno della corrente, tensioni, CC/CV, resistenza interna stimata), con evento e messaggio 🔋 a fine fase. Strumento MCP `get_battery_cycles`: fasi, cicli carica → scarica con efficienza, segno osservato della corrente, fase in corso. Il calcolo non dipende dalla convenzione del segno. La tabella si chiama `battery_phases`; i cicli si formano nello strumento.
 
-Passi sul Pi per la 4a:
+**Fase 4b (03/10): procedure batteria.** L'agente consegna con `start_procedure` una sequenza di passi (`charge`/`discharge` con setpoint, `maxMinutes` obbligatorio e condizioni `until`; `rest`; `repeat`) e il supervisore la valida contro il profilo attivo e la esegue da solo, con i comandi che passano dal bridge. Ogni anomalia (interblocco, cambio di stato esterno, dati fermi, profilo cambiato, comando senza conferma) ferma la batteria e chiude la procedura; `/stop` e `stop_procedure` la fermano; un riavvio del supervisore la chiude e ferma la batteria. Durante una procedura i comandi diretti dell'agente sono rifiutati. Telegram: ▶️ all'avvio, ✅/⏹️/⚠️ alla fine, `/procedura` per lo stato. A fine procedura un lavoro `procedure` (Sonnet) analizza risultati e fasi. Registro in `battery_procedures`, lettura con `get_procedures`. Solo `/ask` (richiesta esplicita dell'utente) può avviare una procedura; l'indagine può solo fermarla. Dettagli in [supervisore.md](supervisore.md#procedure-batteria).
+
+Passi sul Pi per la 4b:
 1. `cd ~/Raspi-MQTT && git pull`
-2. `sudo systemctl restart raspi-supervisor`: alla prima esecuzione legge tutta la storia della batteria, un'ora di dati per volta (circa un giorno di dati al minuto).
-3. `./setup-agent-mcp.sh` (nuovo strumento, istruzioni dell'agente; riavvia il lanciatore)
-4. Dopo qualche minuto: `SELECT id, started_at, run_state, duration_s, charge_mah, current_sign FROM battery_phases;` e `mcp-call get_battery_cycles` (le cariche del 01/10 dovrebbero esserci).
-5. Una prova di scarica breve (qualche centinaio di mA, almeno 10 minuti): a fine scarica arriva il messaggio 🔋 con il segno della corrente.
+2. `sudo systemctl restart raspi-supervisor` (crea `battery_procedures`)
+3. `./setup-agent-mcp.sh` (nuovi strumenti, istruzioni dell'agente; riavvia il lanciatore)
+4. `/procedura` da Telegram → "Nessuna procedura in corso".
+5. Prova breve con il profilo `liion-18650-2600` attivo e la batteria ferma, per esempio: `/ask avvia una procedura di prova: carica a 500 mA e 4200 mV per al massimo 5 minuti, riposo 2 minuti, scarica a 500 mA e 3500 mV per al massimo 5 minuti`. Attesi: ▶️ con i passi, 🔋 per carica e scarica, ✅ alla fine e poi l'analisi 🤖.
+6. Prova di interruzione: avviarne un'altra e mandare `/stop` durante la carica → ⏹️ e batteria ferma.
 
 ### Prossimo passo di sviluppo
 
-Dopo la verifica della 4a e una prova di scarica: **fase 4b**, procedure batteria eseguite dal supervisore come macchina a stati (§5.3), con `start_procedure`/`stop_procedure` per l'agente. Restano da raccogliere le osservazioni del supervisore (eventi falsi o mancanti, registro 405).
+Dopo la verifica della 4b: **fase 4c**, profili reali (valori dai datasheet delle batterie usate; serve l'utente) e prima procedura di caratterizzazione vera (prova di capacità). Da riportare: segno della corrente in scarica visto nel messaggio 🔋, conteggi di `retention.last` per passare a `dryRun: false`, osservazioni del supervisore (eventi falsi o mancanti, registro 405).
 
 ---
 
@@ -213,7 +216,7 @@ Il supervisore sveglia l'agente solo alla fine o in caso di anomalia.
 | `query_readonly(sql)` | Analisi ad hoc; utente MariaDB **read-only**, limite righe |
 | `get_service_health` | Stato servizi + contatori errori |
 | `send_battery_command(cmd, value)` | Solo `set_current_ma`, `set_voltage_mv`, `set_run_state`; validato contro il profilo |
-| `start_procedure(spec)` / `stop_procedure()` | Procedure batteria |
+| `start_procedure(spec)` / `stop_procedure()` / `get_procedures()` | Procedure batteria eseguite dal supervisore |
 | `send_telegram(text, level)` | Messaggi all'utente |
 | `read_notes()` / `write_notes()` | Memoria dell'agente (conclusioni precedenti → report a delta) |
 
@@ -301,8 +304,8 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) + `/ask` | ✅ verificato sul Pi |
 | 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet, `agent_status` | ✅ verificato sul Pi |
 | 3c | Agente: report giornaliero/settimanale, `/report`, `get_report_data` | ✅ verificato sul Pi |
-| 4a | `battery_phases` + `get_battery_cycles` | ✅ fatto (da verificare sul Pi) |
-| 4b | Procedure batteria (macchina a stati) | ⏳ |
+| 4a | `battery_phases` + `get_battery_cycles` | ✅ verificato sul Pi |
+| 4b | Procedure batteria: `start_procedure`, `stop_procedure`, `get_procedures`, `/procedura`, tabella `battery_procedures` | ✅ fatto (provato con il simulatore, da verificare sul Pi) |
 | 4c | Profili reali | 🟡 primo profilo `liion-18650-2600` (limiti prudenti, da verificare sul banco); altri tipi da definire |
 | 5a | Pulizia del database (`retention`): grezzi del laboratorio e della batteria ferma 14 giorni, prove batteria sempre, riassunti al minuto 1 anno | 🟡 in prova a vuoto (`dryRun`); corretta il 02/10 |
 | 5b | Opzionale: snapshot JSON per le dashboard | da decidere |

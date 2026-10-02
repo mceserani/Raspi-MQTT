@@ -40,7 +40,8 @@
 | `supervisor/agent/jobs` | interno | 1 | no | raspi-supervisor |
 | `supervisor/agent/launcher` | interno | 1 | **sì** | raspi-agent-launcher |
 | `supervisor/agent/results` | interno | 1 | no | raspi-agent-launcher |
-| `supervisor/agent/telegram`, `audit`, `escalate` | interno | 1 | no | server MCP, lanciatore |
+| `supervisor/agent/telegram`, `audit`, `escalate`, `procedure` | interno | 1 | no | server MCP, lanciatore |
+| `supervisor/agent/procedure_reply` | interno | 1 | no | raspi-supervisor |
 
 Il prefisso `sensors/battery` è configurabile con `BATTERY_MQTT_TOPIC`; `sensors/lab` è fisso.
 
@@ -249,6 +250,8 @@ Una richiesta con **JSON non valido** su `command/request` viene scartata dal br
 | `supervisor/agent/telegram` | server MCP, lanciatore → supervisore | Messaggio per l'utente: `{ text, level }` |
 | `supervisor/agent/audit` | server MCP → supervisore | Comando batteria dell'agente: `{ command, value, reason, outcome, message }` |
 | `supervisor/agent/escalate` | server MCP → supervisore | Richiesta di indagine dal triage: `{ eventIds, summary }` |
+| `supervisor/agent/procedure` | server MCP → supervisore | Avvio o stop di una procedura batteria: `{ requestId, action: start\|stop, spec, reason }` |
+| `supervisor/agent/procedure_reply` | supervisore → server MCP | Risposta: `{ requestId, ok, id, steps, maxMinutes }` oppure `{ requestId, ok: false, reason }` |
 
 Il prefisso `supervisor/agent` è configurabile con `SUPERVISOR_AGENT_TOPIC`, `supervisor/status` con `SUPERVISOR_STATUS_TOPIC`. Dettagli in [supervisore.md](supervisore.md), [mcp.md](mcp.md) e [lanciatore.md](lanciatore.md).
 
@@ -362,6 +365,7 @@ Create da `raspi-supervisor` all'avvio (`CREATE TABLE IF NOT EXISTS`); descrizio
 |---|---|
 | `supervisor_events` | Eventi (apertura, rientro, gravità, messaggio, dettagli JSON) e `agent_status` del triage |
 | `summary_minute`, `summary_hour` | Riassunti per bucket, sorgente e grandezza: campioni, media, min, max, p95, buco più lungo |
+| `battery_procedures` | Procedure batteria: richiesta, esito, risultato di ogni passo |
 | `battery_phases` | Cariche e scariche concluse: durata, mAh, Wh, segno della corrente, tensioni, CC/CV, resistenza interna stimata |
 | `supervisor_state` | Stato persistente: profilo batteria dichiarato, latch dell'interblocco, avanzamento delle aggregazioni e delle fasi batteria, triage, ultimi report programmati, ultima pulizia del database |
 

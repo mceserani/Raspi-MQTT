@@ -6,6 +6,7 @@ export const BOT_COMMANDS = [
 	{ command: 'eventi', description: 'Eventi aperti' },
 	{ command: 'battery', description: 'Profilo batteria: /battery [nome|auto]' },
 	{ command: 'reset', description: 'Riarma l\'interblocco dopo le verifiche' },
+	{ command: 'procedura', description: 'Procedura batteria in corso (/stop la ferma)' },
 	{ command: 'report', description: 'Report dell\'agente: /report [giorno|settimana]' },
 	{ command: 'ask', description: 'Domanda all\'agente: /ask <domanda>' },
 	{ command: 'help', description: 'Elenco dei comandi' }
@@ -77,6 +78,7 @@ export function formatStatus(status) {
 			: `Servizi non attivi: ${down.map(([unit, service]) => `${unit} (${service.state})`).join(', ')}`);
 	}
 
+	if (status.procedure) lines.push(formatProcedure(status.procedure, Date.parse(status.at)));
 	if (status.agent !== undefined) lines.push(formatAgent(status.agent));
 	if (!status.databaseReady) lines.push('⚠️ MariaDB non raggiungibile: eventi in coda');
 	return lines.join('\n');
@@ -93,6 +95,12 @@ export function formatEvents(events, now) {
 
 const HELP = BOT_COMMANDS.map((c) => `/${c.command} — ${c.description}`).join('\n');
 
+export function formatProcedure(procedure, now) {
+	if (!procedure) return 'Nessuna procedura in corso.';
+	const step = procedure.stepStartedAt ? ` da ${formatDuration((now - procedure.stepStartedAt) / 1000)}` : '';
+	return `Procedura ${procedure.id} (${procedure.name}): passo ${procedure.step}/${procedure.steps}, ${procedure.current}${step} · avviata ${formatDuration((now - procedure.startedAt) / 1000)} fa`;
+}
+
 export function formatAgent(agent) {
 	if (!agent?.online) return 'Agente: non attivo';
 	const { used, max, sonnetUsed, sonnetMax } = agent.budget ?? {};
@@ -100,7 +108,7 @@ export function formatAgent(agent) {
 	return `Agente: ${activity}${agent.queued ? `, ${agent.queued} in coda` : ''} · oggi ${used}/${max} esecuzioni (Sonnet ${sonnetUsed}/${sonnetMax})`;
 }
 
-// ctx: status(), stop(), openEvents(), profiles(), setManualProfile(name|null), resetInterlock(), askAgent(text), requestReport(period), now()
+// ctx: status(), stop(), procedure(), openEvents(), profiles(), setManualProfile(name|null), resetInterlock(), askAgent(text), requestReport(period), now()
 export function createCommandHandler(ctx) {
 	return async (command, args) => {
 		switch (command) {
@@ -116,6 +124,13 @@ export function createCommandHandler(ctx) {
 				return result.stopped
 					? '🛑 Batteria ferma.'
 					: `⚠️ Stop inviato ma non confermato: ${result.message}`;
+			}
+
+			case 'procedura': {
+				const procedure = ctx.procedure?.();
+				return procedure
+					? `${formatProcedure(procedure, ctx.now())}\n/stop la interrompe e ferma la batteria.`
+					: 'Nessuna procedura in corso. Si avviano chiedendole all\'agente con /ask.';
 			}
 
 			case 'eventi':

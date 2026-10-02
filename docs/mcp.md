@@ -37,6 +37,9 @@ Sul PC, con il simulatore: `npm run simulator -- --broker`, poi `node battery-cm
 | `read_notes` / `write_notes` | Memoria dell'agente: file Markdown in `~raspi-agent/notes` (max 16 KB ciascuno) |
 | `send_telegram` | Messaggio all'utente, inviato dal supervisore con il prefisso 🤖 (max 30/ora) |
 | `request_escalation` | Solo nel triage: chiede al supervisore un'indagine con Sonnet sugli eventi indicati (`supervisor/agent/escalate`) |
+| `start_procedure` | Consegna al supervisore una procedura (passi `charge`/`discharge`/`rest`, `repeat`, `reason`) e restituisce `started` con id e durata massima, oppure `rejected` con il motivo. Richiesta su `supervisor/agent/procedure`, risposta su `procedure_reply` (attesa massima `procedures.replyTimeoutSeconds`). Vedi [supervisore.md](supervisore.md#procedure-batteria) |
+| `stop_procedure` | Ferma la procedura in corso (il supervisore ferma la batteria) |
+| `get_procedures` | Ultime procedure da `battery_procedures` (default 5, max 20): richiesta, esito, risultato di ogni passo |
 | `send_battery_command` | `set_current_ma`, `set_voltage_mv`, `set_run_state`: validato, poi inviato su `command/request` (bridge → dispatch → ack) |
 
 ## Sicurezza dei comandi batteria

@@ -56,6 +56,11 @@
     "maxRestHours": 24
   },
 
+  "procedures": {
+    "$comment": "Strumenti start_procedure e stop_procedure: attesa massima della risposta del supervisore.",
+    "replyTimeoutSeconds": 10
+  },
+
   "launcher": {
     "$comment": "Lanciatore dell'agente (fase 3a). Budget in esecuzioni al giorno (quota dell'abbonamento condivisa): un lavoro Sonnet oltre maxSonnetRunsPerDay passa a Haiku. Tipi di lavoro: modello, numero massimo di turni e strumenti MCP ammessi.",
     "maxRunsPerDay": 10,
@@ -69,7 +74,7 @@
       "ask": {
         "model": "sonnet",
         "maxTurns": 12,
-        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes"]
+        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "get_procedures", "start_procedure", "stop_procedure"]
       },
       "triage": {
         "model": "haiku",
@@ -81,24 +86,30 @@
         "model": "sonnet",
         "maxTurns": 20,
         "reserve": 2,
-        "tools": ["get_live_status", "get_battery_cycles", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "write_notes", "send_telegram"]
+        "tools": ["get_live_status", "get_battery_cycles", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "write_notes", "send_telegram", "get_procedures", "stop_procedure"]
       },
       "report_daily": {
         "model": "haiku",
         "maxTurns": 10,
         "reserve": 1,
-        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_summary", "get_events", "read_notes", "write_notes"]
+        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_summary", "get_events", "read_notes", "write_notes", "get_procedures"]
       },
       "report_weekly": {
         "model": "sonnet",
         "maxTurns": 20,
         "reserve": 1,
-        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "write_notes"]
+        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "write_notes", "get_procedures"]
       },
       "report": {
         "model": "sonnet",
         "maxTurns": 12,
-        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes"]
+        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "get_procedures"]
+      },
+      "procedure": {
+        "model": "sonnet",
+        "maxTurns": 12,
+        "reserve": 1,
+        "tools": ["get_procedures", "get_battery_cycles", "get_live_status", "get_summary", "get_events", "read_notes", "write_notes"]
       },
       "test": {
         "model": "haiku",

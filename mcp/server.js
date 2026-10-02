@@ -75,7 +75,7 @@ const DEFINITIONS = {
 		annotations: readOnly
 	},
 	query_readonly: {
-		description: `Query SQL di sola lettura su MariaDB (database sensor_data), massimo ${config.queries.maxRows} righe e 10 s. Tabelle: labsens_measurements e battery_measurements (grezze, 1 riga/s: filtrare sempre per recorded_at e aggregare), summary_minute, summary_hour, supervisor_events, battery_phases. Una sola istruzione, niente commenti. Usare solo se get_summary e get_events non bastano.`,
+		description: `Query SQL di sola lettura su MariaDB (database sensor_data), massimo ${config.queries.maxRows} righe e 10 s. Tabelle: labsens_measurements e battery_measurements (grezze, 1 riga/s: filtrare sempre per recorded_at e aggregare), summary_minute, summary_hour, supervisor_events, battery_phases, battery_procedures. Una sola istruzione, niente commenti. Usare solo se get_summary e get_events non bastano.`,
 		inputSchema: { sql: z.string().describe('SELECT, WITH, SHOW, DESCRIBE o EXPLAIN') },
 		annotations: readOnly
 	},
@@ -108,6 +108,38 @@ const DEFINITIONS = {
 			summary: z.string().min(10).max(1000).describe('Cosa hai osservato e cosa va chiarito')
 		},
 		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }
+	},
+	start_procedure: {
+		description: 'Avvia una procedura batteria eseguita dal supervisore passo per passo (non pilotare la batteria con send_battery_command). Passi: charge/discharge con currentMa, voltageMv (setpoint), maxMinutes (obbligatorio) e until (condizioni di fine, la prima che si verifica: per charge voltageAboveMv, currentBelowMa, mAh; per discharge voltageBelowMv, currentBelowMa, mAh); rest con minutes. Esempio carica CC/CV completa: {"type":"charge","currentMa":1000,"voltageMv":4200,"maxMinutes":240,"until":{"currentBelowMa":100}}. repeat ripete tutta la sequenza. Il supervisore la valida contro il profilo attivo (commandBounds in get_live_status, durata di fase): se la rifiuta, il motivo è nella risposta. Batteria ferma all\'avvio. Avvio, fine e rifiuti arrivano all\'utente su Telegram.',
+		inputSchema: {
+			name: z.string().min(1).max(60).describe('Nome breve, es. "Prova di capacità a 0,5C"'),
+			steps: z.array(z.object({
+				type: z.enum(['charge', 'discharge', 'rest']),
+				currentMa: z.number().int().optional(),
+				voltageMv: z.number().int().optional(),
+				maxMinutes: z.number().optional(),
+				minutes: z.number().optional().describe('Solo per rest'),
+				until: z.object({
+					voltageAboveMv: z.number().int().optional(),
+					voltageBelowMv: z.number().int().optional(),
+					currentBelowMa: z.number().int().optional(),
+					mAh: z.number().optional()
+				}).passthrough().optional()
+			}).passthrough()).min(1).max(10),
+			repeat: z.number().int().min(1).max(10).optional(),
+			reason: z.string().min(3).max(300).describe('Perché la avvii (es. richiesta dell\'utente): finisce nella notifica')
+		},
+		annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
+	},
+	stop_procedure: {
+		description: 'Ferma la procedura in corso: il supervisore ferma la batteria e chiude la procedura come "stopped".',
+		inputSchema: { reason: z.string().min(3).max(300) },
+		annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true }
+	},
+	get_procedures: {
+		description: 'Ultime procedure batteria (anche quella in corso): passi richiesti, esito e risultato di ogni passo (endedBy = condizione che lo ha concluso, minuti, mAh, tensione e corrente finali), messaggio finale. Per capacità ed efficienza delle fasi usare get_battery_cycles sullo stesso periodo.',
+		inputSchema: { limit: z.number().int().min(1).max(20).optional().describe('Default 5') },
+		annotations: readOnly
 	},
 	send_battery_command: {
 		description: 'Comando alla batteria, validato contro il profilo attivo (vedi commandBounds in get_live_status). set_run_state: 0 stop (sempre consentito), 1 carica, 2 scarica; per cambiare modo fermare prima. Setpoint in mA/mV interi positivi. Rifiutato se l\'interblocco è scattato, il profilo non è utilizzabile o i dati non sono aggiornati. Ogni comando, anche rifiutato, viene registrato e notificato all\'utente.',

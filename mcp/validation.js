@@ -61,6 +61,9 @@ export function validateBatteryCommand({ command, value }, { status, now, config
 	if (status.interlock?.latched) {
 		return refuse(`interblocco scattato (${status.interlock.latched.reasons?.join('; ') ?? 'motivo sconosciuto'}): serve /reset dall'utente, consentito solo lo stop`);
 	}
+	if (status.procedure?.running) {
+		return refuse(`procedura ${status.procedure.id} in corso: i comandi li dà il supervisore; consentito solo lo stop (o stop_procedure)`);
+	}
 	if (!status.profile?.usable || !status.profile.limits) {
 		return refuse(`nessun profilo batteria utilizzabile (${status.profile?.reasons?.join(', ') ?? 'profilo assente'}): l'agente può solo osservare`);
 	}

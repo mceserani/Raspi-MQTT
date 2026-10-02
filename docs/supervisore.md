@@ -83,10 +83,11 @@ Profilo attivo: dichiarazione manuale (`/battery <nome>`) oppure `batteryTypeCod
 | Comando | Effetto |
 |---|---|
 | `/status` | Valori attuali, batteria, profilo, interblocco, eventi aperti, servizi, stato e budget dell'agente |
-| `/stop` | Stop immediato della batteria, con conferma |
+| `/stop` | Stop immediato della batteria, con conferma; interrompe anche la procedura in corso |
 | `/eventi` | Eventi aperti |
 | `/battery [nome\|auto]` | Mostra o dichiara il profilo batteria |
 | `/reset` | Riarma l'interblocco dopo le verifiche |
+| `/procedura` | Procedura batteria in corso: passo, condizioni di fine, da quanto è partita (`/stop` la interrompe) |
 | `/ask <domanda>` | Domanda all'agente sui dati: la risposta arriva con il prefisso 🤖 (vedi [lanciatore.md](lanciatore.md)) |
 | `/report [giorno\|settimana]` | Report dell'agente sulle ultime 24 ore (default) o sugli ultimi 7 giorni, con Sonnet |
 | `/help` | Elenco dei comandi (anche `/start`, inviato da Telegram all'apertura della chat) |
@@ -125,6 +126,32 @@ Sezione `cycles` di `config/supervisor.json`. Ogni minuto il supervisore legge l
 
 Alla prima esecuzione legge tutta la storia della tabella, un'ora di dati per volta, saltando i periodi vuoti. La fase in corso è salvata in `supervisor_state` (`cycles`), quindi un riavvio non la perde, ed è pubblicata nello stato (`batteryPhase`). Una fase appena conclusa diventa un evento info `battery:phase_completed` e, se dura almeno `notifyMinMinutes` (10), un messaggio Telegram 🔋 con durata, mAh, Wh, tensioni e segno della corrente. L'agente legge fasi e cicli con lo strumento MCP `get_battery_cycles`.
 
+## Procedure batteria
+
+Sezione `procedures` di `config/supervisor.json`. L'agente non pilota la batteria passo per passo: con lo strumento MCP `start_procedure` consegna al supervisore una **procedura**, cioè una sequenza di passi che il supervisore valida ed esegue da solo.
+
+| Passo | Campi | Fine |
+|---|---|---|
+| `charge` | `currentMa`, `voltageMv` (setpoint), `maxMinutes`, `until` | `voltageAboveMv`, `currentBelowMa`, `mAh` oppure `maxMinutes` |
+| `discharge` | come `charge` | `voltageBelowMv`, `currentBelowMa`, `mAh` oppure `maxMinutes` |
+| `rest` | `minutes` | allo scadere |
+
+`repeat` ripete l'intera sequenza (massimo 10 volte, 50 passi in tutto, 72 ore di durata massima).
+
+**Validazione** (il supervisore è l'unica autorità; ogni rifiuto torna all'agente con il motivo e arriva su Telegram):
+- profilo utilizzabile, interblocco non scattato, batteria ferma, dati della batteria recenti, NTC disponibile e sotto `tempMax − 5 °C`;
+- setpoint e soglie entro i limiti del profilo ristretti dei margini (gli stessi `commandBounds` dei comandi dell'agente);
+- `maxMinutes` obbligatorio e inferiore alla durata massima di fase del profilo meno `phaseMarginMinutes`, così l'interblocco non scatta per durata;
+- una soglia di carica `voltageAboveMv` non può superare il setpoint di tensione (non si raggiungerebbe mai).
+
+**Esecuzione.** Per ogni passo attivo il supervisore ripete i controlli di avvio, imposta corrente e tensione e verifica che risultino applicate, poi avvia carica o scarica. I comandi passano dal bridge come quelli della dashboard (`command/request` → `dispatch` → `ack`), quindi le regole li vedono come comandati. Le condizioni di fine si valutano dopo `settleSeconds` (20 s) e devono valere per `confirmSamples` (5) letture consecutive. A fine passo la batteria viene fermata e si verifica che sia ferma. Il riposo controlla che la batteria resti ferma.
+
+**Interruzione.** Qualsiasi anomalia ferma la batteria (stop diretto su `command/dispatch`) e chiude la procedura come `aborted` con un evento warning: interblocco scattato, batteria uscita dal modo previsto (`/stop`, interblocco, comando esterno), dati della batteria fermi da `staleSeconds`, profilo cambiato, comando senza conferma entro `ackTimeoutSeconds`. `/stop` da Telegram e `stop_procedure` la chiudono come `stopped`. Se il supervisore si riavvia durante una procedura, al riavvio la chiude come `aborted` e ferma la batteria: nessuno ne ha seguito le condizioni di fine.
+
+Durante una procedura il server MCP rifiuta i comandi diretti dell'agente (tranne lo stop). L'interblocco resta sempre attivo sui valori misurati.
+
+**Messaggi e analisi.** Telegram riceve ▶️ all'avvio (con l'elenco dei passi), ✅ / ⏹️ / ⚠️ alla fine; le singole cariche e scariche arrivano anche come 🔋 dalle fasi. Con `analyzeOnEnd` il supervisore manda all'agente un lavoro `procedure` (Sonnet, un'esecuzione del budget) che legge risultati e fasi e scrive all'utente un'analisi. Ogni procedura è registrata in `battery_procedures`.
+
 ## Pulizia del database
 
 Sezione `retention` di `config/supervisor.json`. Ogni notte alle `time` (03:00) il supervisore cancella:
@@ -146,6 +173,7 @@ Con `dryRun: true` (impostazione iniziale) il supervisore non cancella nulla: sc
 |---|---|
 | `supervisor_events` | Un evento per condizione: apertura, gravità attuale e di picco, messaggio, dettagli JSON, `resolved_at`, `agent_status` (`pending` per warning/critical, `skip` per info: lo userà l'agente) |
 | `summary_minute`, `summary_hour` | Per ogni bucket, sorgente (`lab`/`battery`) e grandezza: `samples`, media, min, max, p95, `max_gap_s`. I bucket senza dati sono scritti con `samples = 0` |
+| `battery_procedures` | Una riga per procedura: richiesta (`spec`), esito (`running`, `completed`, `stopped`, `aborted`), risultato di ogni passo (`steps`: condizione di fine, minuti, mAh, tensione e corrente finali), messaggio finale |
 | `battery_phases` | Una riga per carica o scarica conclusa (vedi [Fasi della batteria](#fasi-della-batteria)); chiave unica su `started_at` |
 | `supervisor_state` | Stato persistente: profilo dichiarato, latch dell'interblocco, avanzamento delle aggregazioni e delle fasi (con la fase in corso), ultimo report programmato inviato, ultima pulizia |
 
@@ -163,4 +191,4 @@ SELECT * FROM supervisor_state;
 
 Ogni `statusPublishSeconds` il supervisore pubblica su `supervisor/status` (retained) uno snapshot JSON: valori attuali, profilo attivo con i limiti, latch, eventi aperti, salute dei servizi. Se il processo cade, il broker pubblica `{"online": false}` (last will). Il server MCP legge da qui lo stato per l'agente e per validare i comandi batteria.
 
-Con l'agente il supervisore usa anche i topic `supervisor/agent/*`: pubblica i lavori (`jobs`) e riceve dal lanciatore stato (`launcher`) ed esiti (`results`), dal server MCP messaggi Telegram (`telegram`), audit dei comandi batteria (`audit`) e richieste di indagine (`escalate`). Elenco completo in [riferimento.md](riferimento.md#supervisore-e-agente).
+Con l'agente il supervisore usa anche i topic `supervisor/agent/*`: pubblica i lavori (`jobs`) e riceve dal lanciatore stato (`launcher`) ed esiti (`results`), dal server MCP messaggi Telegram (`telegram`), audit dei comandi batteria (`audit`), richieste di indagine (`escalate`) e richieste di avvio o stop delle procedure (`procedure`, risposta su `procedure_reply`). Elenco completo in [riferimento.md](riferimento.md#supervisore-e-agente).

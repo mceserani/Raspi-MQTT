@@ -12,13 +12,16 @@ export class Bus {
 		this.status = null;
 		this.statusReceivedAt = null;
 		this.pendingAcks = new Map();
+		this.pendingReplies = new Map();
 		this.topics = {
 			status: env.statusTopic,
 			request: `${env.batteryTopic}/command/request`,
 			ack: `${env.batteryTopic}/command/ack`,
 			telegram: `${env.agentTopic}/telegram`,
 			audit: `${env.agentTopic}/audit`,
-			escalate: `${env.agentTopic}/escalate`
+			escalate: `${env.agentTopic}/escalate`,
+			procedure: `${env.agentTopic}/procedure`,
+			procedureReply: `${env.agentTopic}/procedure_reply`
 		};
 	}
 
@@ -32,7 +35,7 @@ export class Bus {
 		});
 
 		this.client.on('connect', () => {
-			this.client.subscribe([this.topics.status, this.topics.ack], { qos: 1 }, (error) => {
+			this.client.subscribe([this.topics.status, this.topics.ack, this.topics.procedureReply], { qos: 1 }, (error) => {
 				if (error) this.log.error('[ERROR] MQTT subscribe failed:', error.message);
 			});
 		});
@@ -53,6 +56,8 @@ export class Bus {
 			this.statusReceivedAt = this.now();
 		} else if (topic === this.topics.ack && payload.commandId && this.pendingAcks.has(payload.commandId)) {
 			this.pendingAcks.get(payload.commandId)(payload);
+		} else if (topic === this.topics.procedureReply && this.pendingReplies.has(payload.requestId)) {
+			this.pendingReplies.get(payload.requestId)(payload);
 		}
 	}
 
@@ -98,6 +103,27 @@ export class Bus {
 			throw new Error('broker MQTT non connesso');
 		}
 		await this.client.publishAsync(this.topics[kind], JSON.stringify({ ...payload, at: new Date(this.now()).toISOString() }), { qos: 1 });
+	}
+
+	// Request to the supervisor, answered on <kind>_reply: resolves the reply or { timeout: true }
+	async requestSupervisor(kind, payload, timeoutSeconds) {
+		if (!this.connected) {
+			throw new Error('broker MQTT non connesso');
+		}
+		const requestId = randomUUID();
+		const reply = new Promise((resolve) => {
+			const timer = setTimeout(() => {
+				this.pendingReplies.delete(requestId);
+				resolve({ timeout: true });
+			}, timeoutSeconds * 1000);
+			this.pendingReplies.set(requestId, (message) => {
+				clearTimeout(timer);
+				this.pendingReplies.delete(requestId);
+				resolve(message);
+			});
+		});
+		await this.client.publishAsync(this.topics[kind], JSON.stringify({ ...payload, requestId, at: new Date(this.now()).toISOString() }), { qos: 1 });
+		return reply;
 	}
 
 	async close() {

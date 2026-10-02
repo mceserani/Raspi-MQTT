@@ -127,6 +127,27 @@
     "notifyMinMinutes": 10
   },
 
+  "procedures": {
+    "$comment": "Procedure batteria eseguite dal supervisore (strumento MCP start_procedure). I margini restringono i limiti del profilo come per i comandi dell'agente (config/agent.json). Tempi in secondi. settleSeconds: attesa dopo l'avvio di un passo prima di valutare le condizioni di fine; confirmSamples: letture consecutive che confermano una condizione; staleSeconds: dati della batteria fermi -> procedura interrotta; phaseMarginMinutes: un passo deve finire prima di maxPhaseDuration del profilo; analyzeOnEnd: a fine procedura l'agente analizza i risultati (un'esecuzione del budget).",
+    "enabled": true,
+    "voltageMarginMv": 30,
+    "currentMarginPct": 5,
+    "temperatureMarginC": 5,
+    "batteryMaxAgeSeconds": 10,
+    "temperatureMaxAgeSeconds": 60,
+    "ackTimeoutSeconds": 10,
+    "confirmTimeoutSeconds": 20,
+    "settleSeconds": 20,
+    "confirmSamples": 5,
+    "staleSeconds": 30,
+    "phaseMarginMinutes": 5,
+    "maxRepeat": 10,
+    "maxSteps": 50,
+    "maxTotalHours": 72,
+    "maxRestMinutes": 1440,
+    "analyzeOnEnd": true
+  },
+
   "retention": {
     "$comment": "Pulizia notturna del database. dryRun: true = conta e scrive nel log cosa cancellerebbe, senza cancellare. Giorni: labRawDays dati grezzi del laboratorio; batteryIdleDays righe della batteria ferma, tranne quelle entro testMarginMinutes da una prova (riposi); batteryTestDays righe delle prove (0 = mai); summaryMinuteDays riassunti al minuto (0 = mai). I riassunti orari e gli eventi restano sempre. Minimo 8 giorni per i dati grezzi (report settimanale).",
     "enabled": true,
