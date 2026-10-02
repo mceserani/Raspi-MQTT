@@ -115,7 +115,7 @@ Sezione `retention` di `config/supervisor.json`. Ogni notte alle `time` (03:00) 
 | Grezzi della batteria durante le prove | mai (`0`) | `batteryTestDays` |
 | Riassunti al minuto | 365 giorni | `summaryMinuteDays` |
 
-I riassunti orari e gli eventi non vengono mai cancellati. Le righe della batteria ferma entro `testMarginMinutes` (60) da una carica o una scarica restano: i riposi fanno parte della prova. Non si cancella nulla che le aggregazioni non abbiano già riassunto. Per i dati grezzi il minimo è 8 giorni, perché il report settimanale li legge. La cancellazione procede a blocchi di `batchRows` righe, con una pausa tra un blocco e l'altro, così i servizi continuano a scrivere.
+I riassunti orari e gli eventi non vengono mai cancellati. Le righe della batteria ferma entro `testMarginMinutes` (60) da una carica o una scarica restano: i riposi fanno parte della prova. Non si cancella nulla che le aggregazioni non abbiano già riassunto: restano anche le righe registrate prima dell'installazione del supervisore (anteriori al primo riassunto orario), che non hanno un riassunto; se non servono si cancellano a mano. Per i dati grezzi il minimo è 8 giorni, perché il report settimanale li legge. La cancellazione procede a blocchi di `batchRows` righe, con una pausa tra un blocco e l'altro, così i servizi continuano a scrivere.
 
 Con `dryRun: true` (impostazione iniziale) il supervisore non cancella nulla: scrive nel log quante righe cancellerebbe (`[RETENTION] would delete: …`). Dopo aver controllato, mettere `dryRun: false` e riavviare il supervisore. L'esito dell'ultima esecuzione è in `supervisor_state` (`retention.last`). MariaDB non riduce i file: lo spazio liberato viene riusato per i dati nuovi.
 

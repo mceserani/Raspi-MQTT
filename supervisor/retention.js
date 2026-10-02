@@ -101,6 +101,14 @@ export class Retention {
 		return cursors.every(Number.isFinite) ? Math.min(...cursors) : fallback;
 	}
 
+	// Nor are rows older than the first summary: they were recorded before the
+	// supervisor (aggregation starts backfillHours before its installation).
+	// The hourly summaries are never deleted, so their start is stable.
+	async aggregatedFrom() {
+		const [row] = await this.db.query('SELECT MIN(bucket_start) AS t FROM summary_hour');
+		return row?.t ? new Date(row.t).getTime() : Infinity;
+	}
+
 	async run() {
 		this.running = true;
 		const started = this.now();
@@ -110,11 +118,13 @@ export class Retention {
 			const now = this.now();
 			const days = (n) => now - n * DAY_MS;
 			const safe = (cutoff) => Math.min(cutoff, this.aggregatedUntil(-Infinity));
+			const from = await this.aggregatedFrom();
+			const raw = (table, cutoff) => (from < cutoff ? this.purge(table, 'recorded_at', cutoff, ' AND recorded_at >= ?', [new Date(from)]) : 0);
 
-			report.lab = await this.purge(this.tables.lab, 'recorded_at', safe(days(this.config.labRawDays)));
-			report.batteryIdle = await this.purgeBatteryIdle(safe(days(this.config.batteryIdleDays)));
+			report.lab = await raw(this.tables.lab, safe(days(this.config.labRawDays)));
+			report.batteryIdle = await this.purgeBatteryIdle(from, safe(days(this.config.batteryIdleDays)));
 			if (this.config.batteryTestDays) {
-				report.batteryTest = await this.purge(this.tables.battery, 'recorded_at', safe(days(this.config.batteryTestDays)));
+				report.batteryTest = await raw(this.tables.battery, safe(days(this.config.batteryTestDays)));
 			}
 			if (this.config.summaryMinuteDays) {
 				report.summaryMinute = await this.purge('summary_minute', 'bucket_start', days(this.config.summaryMinuteDays));
@@ -150,13 +160,16 @@ export class Retention {
 		}
 	}
 
-	// Idle rows (run_state 0) older than cutoff, except those within
+	// Idle rows (run_state 0) in [from, cutoff), except those within
 	// testMarginMinutes of a running battery (rest phases are part of a test).
 	// Processed one day at a time from the oldest idle row.
-	async purgeBatteryIdle(cutoff) {
-		if (!Number.isFinite(cutoff)) return 0;
+	async purgeBatteryIdle(from, cutoff) {
+		if (!Number.isFinite(cutoff) || !(from < cutoff)) return 0;
 		const table = this.tables.battery;
-		const [oldest] = await this.db.query(`SELECT MIN(recorded_at) AS t FROM ${table} WHERE run_state = 0 AND recorded_at < ?`, [new Date(cutoff)]);
+		const [oldest] = await this.db.query(
+			`SELECT MIN(recorded_at) AS t FROM ${table} WHERE run_state = 0 AND recorded_at >= ? AND recorded_at < ?`,
+			[new Date(from), new Date(cutoff)]
+		);
 		if (!oldest?.t) return 0;
 		const marginMs = (this.config.testMarginMinutes ?? 60) * MINUTE_MS;
 

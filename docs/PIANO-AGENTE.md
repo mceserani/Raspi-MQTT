@@ -2,13 +2,13 @@
 
 > Documento di lavoro per riprendere il progetto in sessioni successive.
 > Stato: **implementazione in corso sul ramo `feat/agente`** — vedi §9 per l'avanzamento.
-> Ultimo aggiornamento: 2026-10-01
+> Ultimo aggiornamento: 2026-10-02
 
 ---
 
-## ▶ Punto di ripartenza (aggiornato 2026-10-01)
+## ▶ Punto di ripartenza (aggiornato 2026-10-02)
 
-**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage) e fase 3c (report: `/report` verificato sul Pi). Sul PC: 92 test verdi (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
+**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage) e fase 3c (report, verificata sul Pi). Sul PC: 92 test verdi (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
 
 **Sul Pi (30/09):** passi 1–6 della fase 1 completati (prerequisiti, token Claude, bot Telegram con chat_id, supervisore installato, verifiche MariaDB). Il supervisore gira in osservazione **fino a venerdì mattina (2026-10-02)**: annotare eventi falsi o mancanti, segno della corrente in scarica, comportamento del registro 405.
 
@@ -20,7 +20,7 @@
 
 Nei prossimi giorni: annotare i triage inutili o sbagliati (servono a migliorare `CLAUDE.md` e le soglie) e, da venerdì 2026-10-02, riportare le osservazioni del supervisore (eventi falsi o mancanti, segno della corrente in scarica, registro 405).
 
-**Fase 3c (01/10): `/report` verificato sul Pi; da confermare l'arrivo dei report programmati (giornaliero alle 18:00, settimanale venerdì 2026-10-02 alle 15:00).** Corretto un primo problema: l'agente provava a inviare il report con `send_telegram` e, negato lo strumento, chiedeva conferma all'utente; ora le istruzioni vietano le richieste di conferma. Report giornaliero alle **18:00 con Haiku**, settimanale il **venerdì alle 15:00 con Sonnet**, `/report [giorno|settimana]` con Sonnet. Nuovo strumento MCP `get_report_data` (numeri già calcolati: statistiche, copertura, confronto con il periodo precedente, ore di picco, valori guida OMS, attività batteria, eventi raggruppati); report a delta con le note `report-giornaliero` e `report-settimanale`. Il venerdì arrivano entrambi i report. Le query SQL del nuovo strumento non sono state provate su MariaDB reale (sul PC non c'è): verificarle sul Pi con `mcp-call get_report_data`, anche su 7 giorni (la query sulla tabella grezza della batteria ha un limite di 10 s).
+**Fase 3c verificata sul Pi (02/10):** `/report`, report giornalieri e primo report settimanale arrivati e corretti. Corretto un primo problema: l'agente provava a inviare il report con `send_telegram` e, negato lo strumento, chiedeva conferma all'utente; ora le istruzioni vietano le richieste di conferma. Report giornaliero alle **18:00 con Haiku**, settimanale il **venerdì alle 15:00 con Sonnet**, `/report [giorno|settimana]` con Sonnet. Nuovo strumento MCP `get_report_data` (numeri già calcolati: statistiche, copertura, confronto con il periodo precedente, ore di picco, valori guida OMS, attività batteria, eventi raggruppati); report a delta con le note `report-giornaliero` e `report-settimanale`. Il venerdì arrivano entrambi i report. Le query SQL del nuovo strumento non sono state provate su MariaDB reale (sul PC non c'è): verificarle sul Pi con `mcp-call get_report_data`, anche su 7 giorni (la query sulla tabella grezza della batteria ha un limite di 10 s).
 
 Passi sul Pi per la 3c:
 1. `cd ~/Raspi-MQTT && git pull && npm install`
@@ -29,11 +29,11 @@ Passi sul Pi per la 3c:
 4. `mcp-call get_report_data` (vedi [mcp.md](mcp.md)), poi con `'{"from":"-7d"}'`
 5. `/report` da Telegram; alle 18:00 deve arrivare il report giornaliero.
 
-**Pulizia del database (01/10):** scritta con `dryRun: true`. Sul Pi, dopo il riavvio del supervisore: dalla notte successiva controllare nel log le righe `[RETENTION] would delete`; se i numeri tornano, `dryRun: false` in `config/supervisor.json` e riavvio. Con i dati attuali (circa 1,5 giorni) per due settimane non c'è nulla da cancellare. Nei dati del 01/10 non ci sono scariche (`run_state` solo 0 e 1): per il segno della corrente serve una prova di scarica.
+**Pulizia del database:** la prova a vuoto della notte del 02/10 (`retention.last`) avrebbe cancellato 15.590 righe del laboratorio e 12.618 della batteria ferma, anteriori al 18/09: dati di prima del supervisore, mai riassunti. Corretto (02/10): la pulizia non tocca le righe anteriori al primo riassunto orario. Passi sul Pi: `git pull`, `sudo systemctl restart raspi-supervisor`; il 03/10 controllare `SELECT state_value FROM supervisor_state WHERE state_key = 'retention.last'` → tutti i conteggi a 0 (i dati riassunti hanno meno di 14 giorni). Se torna, `dryRun: false` in `config/supervisor.json`; la prima cancellazione vera sarà verso il 14/10. Il log si legge con `sudo journalctl -u raspi-supervisor | grep RETENTION`. Nei dati del 01/10 non ci sono scariche (`run_state` solo 0 e 1): per il segno della corrente serve una prova di scarica.
 
 ### Prossimo passo di sviluppo
 
-Dopo la verifica della 3c e le osservazioni del supervisore (venerdì 2026-10-02): **fase 4a**, tabella `battery_cycles` e `get_battery_cycles` (cicli riconosciuti dai cambi di `run_state`, capacità, energia, efficienza). Prima serve sapere il segno della corrente in scarica.
+Dopo le osservazioni del supervisore: **fase 4a**, tabella `battery_cycles` e `get_battery_cycles` (cicli riconosciuti dai cambi di `run_state`, capacità, energia, efficienza). Prima serve sapere il segno della corrente in scarica.
 
 ---
 
@@ -298,11 +298,11 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 2b | MCP: `send_battery_command` validato, `send_telegram`, audit (`setup-agent-mcp.sh`) | ✅ verificato sul Pi |
 | 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) + `/ask` | ✅ verificato sul Pi |
 | 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet, `agent_status` | ✅ verificato sul Pi |
-| 3c | Agente: report giornaliero/settimanale, `/report`, `get_report_data` | ✅ `/report` verificato sul Pi; report programmati da confermare |
+| 3c | Agente: report giornaliero/settimanale, `/report`, `get_report_data` | ✅ verificato sul Pi |
 | 4a | `battery_cycles` + `get_battery_cycles` | ⏳ |
 | 4b | Procedure batteria (macchina a stati) | ⏳ |
 | 4c | Profili reali | 🟡 primo profilo `liion-18650-2600` (limiti prudenti, da verificare sul banco); altri tipi da definire |
-| 5a | Pulizia del database (`retention`): grezzi del laboratorio e della batteria ferma 14 giorni, prove batteria sempre, riassunti al minuto 1 anno | ✅ fatto, parte in prova a vuoto (`dryRun`) |
+| 5a | Pulizia del database (`retention`): grezzi del laboratorio e della batteria ferma 14 giorni, prove batteria sempre, riassunti al minuto 1 anno | 🟡 in prova a vuoto (`dryRun`); corretta il 02/10 |
 | 5b | Opzionale: snapshot JSON per le dashboard | da decidere |
 
 ### Note di implementazione

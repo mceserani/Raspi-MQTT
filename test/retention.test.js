@@ -11,7 +11,7 @@ const CONFIG = { enabled: true, dryRun: false, time: '03:00', labRawDays: 14, ba
 const TABLES = { lab: 'labsens_measurements', battery: 'battery_measurements' };
 
 // Fake database: DELETE ... LIMIT removes up to batchRows from a counter per query shape
-function setup({ config = CONFIG, rows = {}, active = [], oldestIdle = null, cursors = true } = {}) {
+function setup({ config = CONFIG, rows = {}, active = [], oldestIdle = null, cursors = true, summariesFrom = new Date(NOW - 100 * DAY) } = {}) {
 	const calls = [];
 	const remaining = { ...rows };
 	const values = new Map(cursors ? [['aggregation.minute.cursor', NOW - 60 * MIN], ['aggregation.hour.cursor', NOW - 60 * MIN]] : []);
@@ -19,6 +19,7 @@ function setup({ config = CONFIG, rows = {}, active = [], oldestIdle = null, cur
 		ready: true,
 		async query(sql, params) {
 			calls.push({ sql, params });
+			if (sql.startsWith('SELECT MIN(bucket_start)')) return [{ t: summariesFrom }];
 			if (sql.startsWith('SELECT MIN(recorded_at)')) return [{ t: oldestIdle }];
 			if (sql.includes('DATE_FORMAT')) return active.map((minute) => ({ minute }));
 			const table = /FROM (\w+)/.exec(sql)[1];
@@ -71,8 +72,9 @@ test('runs once a day after its time, deletes in batches', async () => {
 	assert.equal(remaining.labsens_measurements, 0);
 	const labDeletes = calls.filter((c) => c.sql.startsWith('DELETE FROM labsens_measurements'));
 	assert.equal(labDeletes.length, 3);
-	assert.match(labDeletes[0].sql, /WHERE recorded_at < \? LIMIT 2$/);
+	assert.match(labDeletes[0].sql, /WHERE recorded_at < \? AND recorded_at >= \? LIMIT 2$/);
 	assert.equal(labDeletes[0].params[0].getTime(), NOW + 5 * MIN - 14 * DAY);
+	assert.equal(labDeletes[0].params[1].getTime(), NOW - 100 * DAY);
 	assert.ok(calls.some((c) => c.sql.startsWith('DELETE FROM summary_minute WHERE bucket_start < ?')));
 	// batteryTestDays 0: test rows are never deleted as such
 	assert.ok(!calls.some((c) => c.sql.startsWith('DELETE FROM battery_measurements WHERE recorded_at < ? LIMIT')));
@@ -111,6 +113,24 @@ test('nothing is deleted before the aggregation has run', async () => {
 	const report = await retention.run();
 	assert.equal(report.lab, 0);
 	assert.ok(!calls.some((c) => c.sql.includes('labsens_measurements') || c.sql.includes('battery_measurements')));
+});
+
+test('rows older than the first summary (before the supervisor) are kept', async () => {
+	const from = new Date(NOW - 20 * DAY);
+	const { retention, calls } = setup({ summariesFrom: from, rows: { labsens_measurements: 4 }, oldestIdle: from });
+	await retention.run();
+	const raw = calls.filter((c) => /(DELETE|MIN\(recorded_at\)).*(labsens|battery)_measurements/s.test(c.sql));
+	assert.ok(raw.length > 0);
+	for (const call of raw) {
+		assert.match(call.sql, /recorded_at >= \?/);
+		assert.ok(call.params.some((p) => p.getTime() >= from.getTime()));
+	}
+
+	// no hourly summaries yet: raw data is left alone
+	const empty = setup({ summariesFrom: null, rows: { labsens_measurements: 4 }, oldestIdle: from });
+	const report = await empty.retention.run();
+	assert.equal(report.lab, 0);
+	assert.ok(!empty.calls.some((c) => c.sql.includes('_measurements')));
 });
 
 test('shipped configuration starts as a dry run', async () => {
