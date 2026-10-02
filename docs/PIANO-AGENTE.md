@@ -38,7 +38,7 @@ Passi sul Pi per la 4b:
 
 ### Prossimo passo di sviluppo
 
-Dopo la verifica della 4b: **fase 4c**, profili reali (valori dai datasheet delle batterie usate; serve l'utente) e prima procedura di caratterizzazione vera (prova di capacità). Da riportare: segno della corrente in scarica visto nel messaggio 🔋, conteggi di `retention.last` per passare a `dryRun: false`, osservazioni del supervisore (eventi falsi o mancanti, registro 405).
+Dopo la verifica della 4b: **fase 4c**, profili reali (valori dai datasheet delle batterie usate; serve l'utente) e prima procedura di caratterizzazione vera (prova di capacità). Segno della corrente verificato il 02/10 (positiva in carica, negativa in scarica). Da riportare: conteggi di `retention.last` per passare a `dryRun: false`, osservazioni del supervisore (eventi falsi o mancanti, registro 405).
 
 ---
 
@@ -313,7 +313,7 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 ### Note di implementazione
 
 - **Bug del segno di `labsens`:** il codice esistente non si tocca; il supervisore reinterpreta i valori come interi con segno (valori ≥ 327,68 per le grandezze /100 → negativi). Il simulatore riproduce il bug di proposito.
-- **Convenzione corrente (ipotesi da verificare sul banco):** corrente misurata positiva in carica, negativa in scarica. Le fasi (4a) non ne dipendono: registrano il segno osservato (`current_sign`).
+- **Convenzione corrente (verificata sul banco il 02/10):** corrente misurata positiva in carica, negativa in scarica. Le fasi (4a) non ne dipendono: registrano il segno osservato (`current_sign`).
 - **Supervisore:** documentazione operativa in [supervisore.md](supervisore.md). Lo stop dell'interblocco e di `/stop` va direttamente su `command/dispatch` (non dipende dal bridge). Lo stato è pubblicato su `supervisor/status` (retained) per il server MCP.
 - **Server MCP:** documentazione in [mcp.md](mcp.md). I comandi sono validati contro lo stato pubblicato dal supervisore (unica fonte del profilo attivo e del latch); i limiti dei comandi (`commandBounds`) sono quelli del profilo ristretti dei margini di `config/agent.json`, così un setpoint accettato non fa scattare l'interblocco. Il server è installato in `/opt/raspi-agent` come root: l'agente non può modificarlo.
 - **Separazione utenti:** il supervisore gira come l'utente dei servizi esistenti; l'agente come `raspi-agent`. Il supervisore non può lanciare processi come un altro utente senza sudo, quindi il lanciatore (3a) sarà un servizio separato che gira come `raspi-agent` e riceve i lavori dal supervisore.
