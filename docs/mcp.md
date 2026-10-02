@@ -32,6 +32,7 @@ Sul PC, con il simulatore: `npm run simulator -- --broker`, poi `node battery-cm
 | `get_summary` | Riassunti `minute`/`hour`/`day` (auto) da `summary_minute`/`summary_hour`, in forma compatta a colonne |
 | `get_events` | Eventi del supervisore (default: ultime 24 h, da warning in su, più quelli aperti) |
 | `get_report_data` | Numeri già calcolati per un report su ore intere (default ultime 24 h, max 31 giorni): per grandezza avg/min/max/p95, copertura, confronto con il periodo precedente, ora di picco e di minimo, confronto con i valori guida OMS (`reports.references`); batteria: tempo in ogni stato, tensioni, carica stimata, valori del registro 405; eventi raggruppati per condizione ed esiti del triage |
+| `get_battery_cycles` | Fasi di carica e scarica da `battery_phases` (default ultimi 30 giorni, max 100 fasi) in forma compatta a colonne: durata, mAh, Wh, segno della corrente, tensioni, CC/CV, resistenza interna; cicli carica → scarica (pausa massima `cycles.maxRestHours`) con efficienza coulombica ed energetica; segno osservato della corrente per modo; fase in corso |
 | `query_readonly` | SQL di sola lettura: una istruzione, niente commenti, max 200 righe e 10 s |
 | `read_notes` / `write_notes` | Memoria dell'agente: file Markdown in `~raspi-agent/notes` (max 16 KB ciascuno) |
 | `send_telegram` | Messaggio all'utente, inviato dal supervisore con il prefisso 🤖 (max 30/ora) |

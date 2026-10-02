@@ -66,8 +66,16 @@ const DEFINITIONS = {
 		},
 		annotations: readOnly
 	},
+	get_battery_cycles: {
+		description: 'Cariche e scariche della batteria riconosciute dal supervisore, con numeri già calcolati: durata, capacità (mAh), energia (Wh), tensioni, corrente media e di setpoint, minuti in CC e CV, resistenza interna stimata, segno osservato della corrente. Cicli carica → scarica con efficienza coulombica ed energetica. Fase in corso (inProgress). Da preferire a query_readonly sulla tabella grezza.',
+		inputSchema: {
+			since: z.string().optional().describe(`Default -30d. ${TIME}`),
+			limit: z.number().int().min(1).max(config.cycles?.maxPhases ?? 100).optional().describe('Numero massimo di fasi (le più recenti)')
+		},
+		annotations: readOnly
+	},
 	query_readonly: {
-		description: `Query SQL di sola lettura su MariaDB (database sensor_data), massimo ${config.queries.maxRows} righe e 10 s. Tabelle: labsens_measurements e battery_measurements (grezze, 1 riga/s: filtrare sempre per recorded_at e aggregare), summary_minute, summary_hour, supervisor_events. Una sola istruzione, niente commenti. Usare solo se get_summary e get_events non bastano.`,
+		description: `Query SQL di sola lettura su MariaDB (database sensor_data), massimo ${config.queries.maxRows} righe e 10 s. Tabelle: labsens_measurements e battery_measurements (grezze, 1 riga/s: filtrare sempre per recorded_at e aggregare), summary_minute, summary_hour, supervisor_events, battery_phases. Una sola istruzione, niente commenti. Usare solo se get_summary e get_events non bastano.`,
 		inputSchema: { sql: z.string().describe('SELECT, WITH, SHOW, DESCRIBE o EXPLAIN') },
 		annotations: readOnly
 	},

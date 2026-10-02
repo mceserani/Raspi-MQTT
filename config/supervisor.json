@@ -113,6 +113,20 @@
     "weekly": { "enabled": true, "day": "venerdì", "time": "15:00" }
   },
 
+  "cycles": {
+    "$comment": "Fasi di carica e scarica dalla tabella grezza della batteria (tabella battery_phases, strumento MCP get_battery_cycles). Alla prima esecuzione legge tutta la storia. Tempi in secondi. minPhaseSeconds: fasi più corte ignorate; maxIntegrateGapSeconds: buchi più lunghi non integrati (contati in gap_s); splitGapSeconds: un buco più lungo chiude la fase; ccTolerancePct/cvToleranceMv: classificazione CC (corrente al setpoint) e CV (tensione al setpoint); restWindowSeconds: distanza massima tra riposo e carico per stimare la resistenza interna; notifyMinMinutes: fasi più lunghe notificate su Telegram.",
+    "enabled": true,
+    "intervalSeconds": 60,
+    "lagSeconds": 15,
+    "minPhaseSeconds": 30,
+    "maxIntegrateGapSeconds": 5,
+    "splitGapSeconds": 600,
+    "ccTolerancePct": 5,
+    "cvToleranceMv": 20,
+    "restWindowSeconds": 10,
+    "notifyMinMinutes": 10
+  },
+
   "retention": {
     "$comment": "Pulizia notturna del database. dryRun: true = conta e scrive nel log cosa cancellerebbe, senza cancellare. Giorni: labRawDays dati grezzi del laboratorio; batteryIdleDays righe della batteria ferma, tranne quelle entro testMarginMinutes da una prova (riposi); batteryTestDays righe delle prove (0 = mai); summaryMinuteDays riassunti al minuto (0 = mai). I riassunti orari e gli eventi restano sempre. Minimo 8 giorni per i dati grezzi (report settimanale).",
     "enabled": true,

@@ -362,7 +362,8 @@ Create da `raspi-supervisor` all'avvio (`CREATE TABLE IF NOT EXISTS`); descrizio
 |---|---|
 | `supervisor_events` | Eventi (apertura, rientro, gravità, messaggio, dettagli JSON) e `agent_status` del triage |
 | `summary_minute`, `summary_hour` | Riassunti per bucket, sorgente e grandezza: campioni, media, min, max, p95, buco più lungo |
-| `supervisor_state` | Stato persistente: profilo batteria dichiarato, latch dell'interblocco, avanzamento delle aggregazioni, triage, ultimi report programmati, ultima pulizia del database |
+| `battery_phases` | Cariche e scariche concluse: durata, mAh, Wh, segno della corrente, tensioni, CC/CV, resistenza interna stimata |
+| `supervisor_state` | Stato persistente: profilo batteria dichiarato, latch dell'interblocco, avanzamento delle aggregazioni e delle fasi batteria, triage, ultimi report programmati, ultima pulizia del database |
 
 L'agente legge il database con l'utente `agent_ro` (solo `SELECT`), creato da `setup-agent-prereqs.sh`.
 

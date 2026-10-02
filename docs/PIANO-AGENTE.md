@@ -8,7 +8,7 @@
 
 ## ▶ Punto di ripartenza (aggiornato 2026-10-02)
 
-**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage) e fase 3c (report, verificata sul Pi). Sul PC: 92 test verdi (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
+**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage), fase 3c (report, verificata sul Pi), pulizia del database (in prova a vuoto) e fase 4a (fasi e cicli della batteria, da verificare sul Pi). Sul PC: 110 test verdi (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
 
 **Sul Pi (30/09):** passi 1–6 della fase 1 completati (prerequisiti, token Claude, bot Telegram con chat_id, supervisore installato, verifiche MariaDB). Il supervisore gira in osservazione **fino a venerdì mattina (2026-10-02)**: annotare eventi falsi o mancanti, segno della corrente in scarica, comportamento del registro 405.
 
@@ -22,18 +22,20 @@ Nei prossimi giorni: annotare i triage inutili o sbagliati (servono a migliorare
 
 **Fase 3c verificata sul Pi (02/10):** `/report`, report giornalieri e primo report settimanale arrivati e corretti. Corretto un primo problema: l'agente provava a inviare il report con `send_telegram` e, negato lo strumento, chiedeva conferma all'utente; ora le istruzioni vietano le richieste di conferma. Report giornaliero alle **18:00 con Haiku**, settimanale il **venerdì alle 15:00 con Sonnet**, `/report [giorno|settimana]` con Sonnet. Nuovo strumento MCP `get_report_data` (numeri già calcolati: statistiche, copertura, confronto con il periodo precedente, ore di picco, valori guida OMS, attività batteria, eventi raggruppati); report a delta con le note `report-giornaliero` e `report-settimanale`. Il venerdì arrivano entrambi i report. Le query SQL del nuovo strumento non sono state provate su MariaDB reale (sul PC non c'è): verificarle sul Pi con `mcp-call get_report_data`, anche su 7 giorni (la query sulla tabella grezza della batteria ha un limite di 10 s).
 
-Passi sul Pi per la 3c:
-1. `cd ~/Raspi-MQTT && git pull && npm install`
-2. `sudo systemctl restart raspi-supervisor` → nel log `Report programmati: giornaliero alle 18:00, settimanale il venerdì alle 15:00.`
-3. `./setup-agent-mcp.sh` (riavvia anche il lanciatore)
-4. `mcp-call get_report_data` (vedi [mcp.md](mcp.md)), poi con `'{"from":"-7d"}'`
-5. `/report` da Telegram; alle 18:00 deve arrivare il report giornaliero.
-
 **Pulizia del database:** la prova a vuoto della notte del 02/10 (`retention.last`) avrebbe cancellato 15.590 righe del laboratorio e 12.618 della batteria ferma, anteriori al 18/09: dati di prima del supervisore, mai riassunti. Corretto (02/10): la pulizia non tocca le righe anteriori al primo riassunto orario. Passi sul Pi: `git pull`, `sudo systemctl restart raspi-supervisor`; il 03/10 controllare `SELECT state_value FROM supervisor_state WHERE state_key = 'retention.last'` → tutti i conteggi a 0 (i dati riassunti hanno meno di 14 giorni). Se torna, `dryRun: false` in `config/supervisor.json`; la prima cancellazione vera sarà verso il 14/10. Il log si legge con `journalctl --namespace=raspi-agent -u raspi-supervisor | grep RETENTION` (journal separato e persistente dal 02/10: quello normale è in RAM e i `[DEBUG]` dei servizi esistenti lo riempiono in meno di un'ora). Nei dati del 01/10 non ci sono scariche (`run_state` solo 0 e 1): per il segno della corrente serve una prova di scarica.
+
+**Fase 4a (02/10): fasi e cicli della batteria.** Il supervisore riconosce ogni carica e scarica dai cambi di `run_state` e la salva in `battery_phases`: durata, mAh, Wh, segno della corrente, tensioni, minuti in CC e CV, resistenza interna stimata all'avvio e allo stop. La fase in corso sopravvive ai riavvii (`supervisor_state`, chiave `cycles`). A fine fase arrivano un evento info e un messaggio Telegram 🔋. Nuovo strumento MCP `get_battery_cycles`: fasi, cicli carica → scarica con efficienza coulombica ed energetica, segno osservato della corrente per modo, fase in corso. Il segno non è più un prerequisito: la capacità si integra con il segno e si salva in valore assoluto, e il segno viene registrato. **Basta una scarica per sapere la convenzione:** lo dice il messaggio 🔋 ("corrente misurata negativa/positiva"). La tabella si chiama `battery_phases` (una riga per fase); i cicli si formano nello strumento.
+
+Passi sul Pi per la 4a:
+1. `cd ~/Raspi-MQTT && git pull`
+2. `sudo systemctl restart raspi-supervisor`: alla prima esecuzione legge tutta la storia della batteria, un'ora di dati per volta (circa un giorno di dati al minuto).
+3. `./setup-agent-mcp.sh` (nuovo strumento, istruzioni dell'agente; riavvia il lanciatore)
+4. Dopo qualche minuto: `SELECT id, started_at, run_state, duration_s, charge_mah, current_sign FROM battery_phases;` e `mcp-call get_battery_cycles` (le cariche del 01/10 dovrebbero esserci).
+5. Una prova di scarica breve (qualche centinaio di mA, almeno 10 minuti): a fine scarica arriva il messaggio 🔋 con il segno della corrente.
 
 ### Prossimo passo di sviluppo
 
-Dopo le osservazioni del supervisore: **fase 4a**, tabella `battery_cycles` e `get_battery_cycles` (cicli riconosciuti dai cambi di `run_state`, capacità, energia, efficienza). Prima serve sapere il segno della corrente in scarica.
+Dopo la verifica della 4a e una prova di scarica: **fase 4b**, procedure batteria eseguite dal supervisore come macchina a stati (§5.3), con `start_procedure`/`stop_procedure` per l'agente. Restano da raccogliere le osservazioni del supervisore (eventi falsi o mancanti, registro 405).
 
 ---
 
@@ -150,7 +152,7 @@ Rilevamento automatico porte seriali: `modbus-autodetect.js`.
 
 **Aggregazioni periodiche** (job SQL):
 - riassunti per minuto e per ora: media, min, max, p95, numero campioni, buchi;
-- tabella `battery_cycles` (vedi 5.4);
+- tabella `battery_phases` (cariche e scariche; vedi 5.4);
 - statistiche giornaliere dell'aria (profili orari, superamenti).
 
 **Lanciatore agente:**
@@ -190,7 +192,7 @@ Il supervisore sveglia l'agente solo alla fine o in caso di anomalia.
 - efficienza coulombica ed energetica;
 - durata delle fasi CC/CV;
 - resistenza interna stimata da ΔV/ΔI ai gradini di setpoint;
-- → tabella `battery_cycles`; l'agente valuta trend, degrado e anomalie tra cicli.
+- → tabella `battery_phases` (una riga per fase; i cicli carica → scarica si formano in `get_battery_cycles`); l'agente valuta trend, degrado e anomalie tra cicli.
 
 **Laboratorio:**
 - profili giornalieri/orari;
@@ -207,7 +209,7 @@ Il supervisore sveglia l'agente solo alla fine o in caso di anomalia.
 | `get_summary(range, granularity)` | Riassunti aggregati |
 | `get_events(since, severity)` | Eventi del supervisore |
 | `get_report_data(from, to)` | Numeri già calcolati per i report (statistiche, confronti, eventi raggruppati, attività batteria) |
-| `get_battery_cycles(since)` | Cicli con metriche calcolate |
+| `get_battery_cycles(since)` | Fasi e cicli con metriche calcolate, segno osservato della corrente, fase in corso |
 | `query_readonly(sql)` | Analisi ad hoc; utente MariaDB **read-only**, limite righe |
 | `get_service_health` | Stato servizi + contatori errori |
 | `send_battery_command(cmd, value)` | Solo `set_current_ma`, `set_voltage_mv`, `set_run_state`; validato contro il profilo |
@@ -266,7 +268,7 @@ Il supervisore sveglia l'agente solo alla fine o in caso di anomalia.
 2. **Supervisore v1**: regole + tabella `events`, interblocco con profili segnaposto, aggregazioni, Telegram in uscita.
 3. **Server MCP**: tool di lettura + `send_battery_command` e `start_procedure` con validazione profili.
 4. **Agente**: istruzioni, triage eventi, report giornaliero/settimanale, `/report` e `/ask`.
-5. **Procedure batteria + tabella `battery_cycles`**; compilazione dei profili reali.
+5. **Procedure batteria + tabella `battery_phases`**; compilazione dei profili reali.
 6. *(Opzionale, da valutare)* retention DB, eventuale snapshot JSON non interattivo per le dashboard.
 
 ---
@@ -299,7 +301,7 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 3a | Agente: lanciatore (coda, budget esecuzioni/giorno, `claude -p`) + `/ask` | ✅ verificato sul Pi |
 | 3b | Agente: `CLAUDE.md`, triage Haiku → Sonnet, `agent_status` | ✅ verificato sul Pi |
 | 3c | Agente: report giornaliero/settimanale, `/report`, `get_report_data` | ✅ verificato sul Pi |
-| 4a | `battery_cycles` + `get_battery_cycles` | ⏳ |
+| 4a | `battery_phases` + `get_battery_cycles` | ✅ fatto (da verificare sul Pi) |
 | 4b | Procedure batteria (macchina a stati) | ⏳ |
 | 4c | Profili reali | 🟡 primo profilo `liion-18650-2600` (limiti prudenti, da verificare sul banco); altri tipi da definire |
 | 5a | Pulizia del database (`retention`): grezzi del laboratorio e della batteria ferma 14 giorni, prove batteria sempre, riassunti al minuto 1 anno | 🟡 in prova a vuoto (`dryRun`); corretta il 02/10 |
@@ -308,7 +310,7 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 ### Note di implementazione
 
 - **Bug del segno di `labsens`:** il codice esistente non si tocca; il supervisore reinterpreta i valori come interi con segno (valori ≥ 327,68 per le grandezze /100 → negativi). Il simulatore riproduce il bug di proposito.
-- **Convenzione corrente (ipotesi da verificare sul banco):** corrente misurata positiva in carica, negativa in scarica.
+- **Convenzione corrente (ipotesi da verificare sul banco):** corrente misurata positiva in carica, negativa in scarica. Le fasi (4a) non ne dipendono: registrano il segno osservato (`current_sign`).
 - **Supervisore:** documentazione operativa in [supervisore.md](supervisore.md). Lo stop dell'interblocco e di `/stop` va direttamente su `command/dispatch` (non dipende dal bridge). Lo stato è pubblicato su `supervisor/status` (retained) per il server MCP.
 - **Server MCP:** documentazione in [mcp.md](mcp.md). I comandi sono validati contro lo stato pubblicato dal supervisore (unica fonte del profilo attivo e del latch); i limiti dei comandi (`commandBounds`) sono quelli del profilo ristretti dei margini di `config/agent.json`, così un setpoint accettato non fa scattare l'interblocco. Il server è installato in `/opt/raspi-agent` come root: l'agente non può modificarlo.
 - **Separazione utenti:** il supervisore gira come l'utente dei servizi esistenti; l'agente come `raspi-agent`. Il supervisore non può lanciare processi come un altro utente senza sudo, quindi il lanciatore (3a) sarà un servizio separato che gira come `raspi-agent` e riceve i lavori dal supervisore.

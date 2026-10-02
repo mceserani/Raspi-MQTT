@@ -98,7 +98,10 @@ export class Retention {
 	// Raw rows still to be summarized are never touched
 	aggregatedUntil(fallback) {
 		const cursors = ['minute', 'hour'].map((g) => this.state.get(`aggregation.${g}.cursor`));
-		return cursors.every(Number.isFinite) ? Math.min(...cursors) : fallback;
+		if (!cursors.every(Number.isFinite)) return fallback;
+		// Nor rows the battery phase detection has not read yet
+		const phases = this.state.get('cycles')?.cursor;
+		return Math.min(...cursors, ...(Number.isFinite(phases) ? [phases] : []));
 	}
 
 	// Nor are rows older than the first summary: they were recorded before the

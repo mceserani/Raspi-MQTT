@@ -112,6 +112,19 @@ Il lavoro parte `delayMinutes` dopo l'orario (così l'ultima ora è già nei ria
 
 L'agente parte dai numeri di `get_report_data` e dalle proprie note (`report-giornaliero`, `report-settimanale`), così ogni report descrive le novità rispetto ai precedenti. Il venerdì arrivano entrambi i report.
 
+## Fasi della batteria
+
+Sezione `cycles` di `config/supervisor.json`. Ogni minuto il supervisore legge le righe nuove della tabella grezza della batteria e riconosce le **fasi**: ogni tratto continuo in carica (`run_state` 1) o in scarica (2). Una fase finisce quando cambia `run_state` oppure quando mancano i dati per più di `splitGapSeconds` (10 min). Le fasi più corte di `minPhaseSeconds` (30 s) vengono ignorate. Ogni fase conclusa diventa una riga di `battery_phases`, con:
+
+- durata, capacità (mAh) ed energia (Wh), integrando la corrente e la potenza misurate;
+- segno della corrente (`current_sign`): la capacità è salvata in valore assoluto, quindi il calcolo non dipende dalla convenzione del segno, che si legge dai dati;
+- tensioni (inizio, fine, minima, massima), corrente media e massima, setpoint all'inizio;
+- tempo in CC (corrente entro il 5 % del setpoint) e in CV (tensione entro 20 mV dal setpoint);
+- resistenza interna stimata dal salto di tensione tra riposo e carico, all'avvio e allo stop (solo se il riposo è entro 10 s);
+- secondi senza dati non integrati (`gap_s`): se sono tanti, la capacità è sottostimata.
+
+Alla prima esecuzione legge tutta la storia della tabella, un'ora di dati per volta, saltando i periodi vuoti. La fase in corso è salvata in `supervisor_state` (`cycles`), quindi un riavvio non la perde, ed è pubblicata nello stato (`batteryPhase`). Una fase appena conclusa diventa un evento info `battery:phase_completed` e, se dura almeno `notifyMinMinutes` (10), un messaggio Telegram 🔋 con durata, mAh, Wh, tensioni e segno della corrente. L'agente legge fasi e cicli con lo strumento MCP `get_battery_cycles`.
+
 ## Pulizia del database
 
 Sezione `retention` di `config/supervisor.json`. Ogni notte alle `time` (03:00) il supervisore cancella:
@@ -123,7 +136,7 @@ Sezione `retention` di `config/supervisor.json`. Ogni notte alle `time` (03:00) 
 | Grezzi della batteria durante le prove | mai (`0`) | `batteryTestDays` |
 | Riassunti al minuto | 365 giorni | `summaryMinuteDays` |
 
-I riassunti orari e gli eventi non vengono mai cancellati. Le righe della batteria ferma entro `testMarginMinutes` (60) da una carica o una scarica restano: i riposi fanno parte della prova. Non si cancella nulla che le aggregazioni non abbiano già riassunto: restano anche le righe registrate prima dell'installazione del supervisore (anteriori al primo riassunto orario), che non hanno un riassunto; se non servono si cancellano a mano. Per i dati grezzi il minimo è 8 giorni, perché il report settimanale li legge. La cancellazione procede a blocchi di `batchRows` righe, con una pausa tra un blocco e l'altro, così i servizi continuano a scrivere.
+I riassunti orari e gli eventi non vengono mai cancellati. Le righe della batteria ferma entro `testMarginMinutes` (60) da una carica o una scarica restano: i riposi fanno parte della prova. Non si cancella nulla che le aggregazioni o il riconoscimento delle fasi non abbiano già letto: restano anche le righe registrate prima dell'installazione del supervisore (anteriori al primo riassunto orario), che non hanno un riassunto; se non servono si cancellano a mano. Per i dati grezzi il minimo è 8 giorni, perché il report settimanale li legge. La cancellazione procede a blocchi di `batchRows` righe, con una pausa tra un blocco e l'altro, così i servizi continuano a scrivere.
 
 Con `dryRun: true` (impostazione iniziale) il supervisore non cancella nulla: scrive nel log quante righe cancellerebbe (`[RETENTION] would delete: …`). Dopo aver controllato, mettere `dryRun: false` e riavviare il supervisore. L'esito dell'ultima esecuzione è in `supervisor_state` (`retention.last`). MariaDB non riduce i file: lo spazio liberato viene riusato per i dati nuovi.
 
@@ -133,7 +146,8 @@ Con `dryRun: true` (impostazione iniziale) il supervisore non cancella nulla: sc
 |---|---|
 | `supervisor_events` | Un evento per condizione: apertura, gravità attuale e di picco, messaggio, dettagli JSON, `resolved_at`, `agent_status` (`pending` per warning/critical, `skip` per info: lo userà l'agente) |
 | `summary_minute`, `summary_hour` | Per ogni bucket, sorgente (`lab`/`battery`) e grandezza: `samples`, media, min, max, p95, `max_gap_s`. I bucket senza dati sono scritti con `samples = 0` |
-| `supervisor_state` | Stato persistente: profilo dichiarato, latch dell'interblocco, avanzamento delle aggregazioni, ultimo report programmato inviato, ultima pulizia |
+| `battery_phases` | Una riga per carica o scarica conclusa (vedi [Fasi della batteria](#fasi-della-batteria)); chiave unica su `started_at` |
+| `supervisor_state` | Stato persistente: profilo dichiarato, latch dell'interblocco, avanzamento delle aggregazioni e delle fasi (con la fase in corso), ultimo report programmato inviato, ultima pulizia |
 
 Le date sono in ora locale, come nelle tabelle esistenti. Se MariaDB non risponde il supervisore continua a funzionare: gli eventi restano in coda e le aggregazioni recuperano quando torna.
 

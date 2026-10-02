@@ -133,6 +133,14 @@ test('rows older than the first summary (before the supervisor) are kept', async
 	assert.ok(!empty.calls.some((c) => c.sql.includes('_measurements')));
 });
 
+test('rows not yet read by the battery phase detection are kept', async () => {
+	const { retention, calls, values } = setup({ rows: { labsens_measurements: 4 } });
+	values.set('cycles', { cursor: NOW - 20 * DAY, open: null, last: null });
+	await retention.run();
+	const lab = calls.find((c) => c.sql.startsWith('DELETE FROM labsens_measurements'));
+	assert.equal(lab.params[0].getTime(), NOW - 20 * DAY);
+});
+
 test('shipped configuration starts as a dry run', async () => {
 	const supervisor = JSON.parse(await readFile(new URL('../config/supervisor.json', import.meta.url), 'utf8'));
 	assert.equal(supervisor.retention.dryRun, true);

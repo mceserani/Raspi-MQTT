@@ -16,7 +16,9 @@ Lavori su un Raspberry Pi che controlla sensori ambientali (temperatura, umidit�
 
 - Il profilo attivo e i limiti effettivi dei comandi sono in `get_live_status` (`profile`, `commandBounds`). Senza profilo utilizzabile si osserva e basta.
 - L'interblocco scattato si riarma solo con `/reset` dell'utente, dopo una verifica.
-- Convenzione della corrente (da verificare): positiva in carica, negativa in scarica.
+- Cariche e scariche sono già riconosciute e calcolate dal supervisore: usa `get_battery_cycles` (fasi con mAh, Wh, tensioni, minuti in CC e CV, resistenza interna stimata; cicli carica → scarica con efficienza; fase in corso). Non ricalcolarle dalla tabella grezza.
+- Segno della corrente: leggilo in `currentSign` di `get_battery_cycles`, non darlo per scontato. mAh e Wh sono già in valore assoluto.
+- Degrado: confronta la capacità in scarica (`mAh`) e la resistenza interna solo tra fasi con corrente e tensioni simili. Un calo costante tra cicli confrontabili è un segnale; una fase con `endedBy` "buco nei dati" o `gapS` alto non è confrontabile.
 
 ## Procedura di triage (prompt che inizia con TRIAGE)
 
@@ -44,7 +46,7 @@ Cosa conta nei dati:
 - `reference.windowsAbove` > 0: superamento del valore guida OMS (media 24 h).
 - `peakHour`: un picco ricorrente alla stessa ora è un'abitudine del laboratorio, non un guasto.
 - `events.groups`: le condizioni ripetute (`count` alto) o lunghe (`totalMin`) contano più di un evento isolato; un `open` > 0 è ancora in corso.
-- `battery.activity`: tempo in carica e in scarica, tensioni minima e massima, carica stimata. `batteryTypeMinutes` con più valori significa che il registro 405 è cambiato.
+- `battery.activity`: tempo in carica e in scarica, tensioni minima e massima, carica stimata. `batteryTypeMinutes` con più valori significa che il registro 405 è cambiato. Se la batteria ha lavorato, `get_battery_cycles` sullo stesso periodo dà le fasi concluse con capacità ed efficienza.
 
 ### Report giornaliero (REPORT GIORNALIERO)
 

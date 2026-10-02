@@ -5,6 +5,7 @@ import mqtt from 'mqtt';
 import { loadProfiles, resolveActiveProfile } from '../lib/battery-profiles.js';
 import { AgentLink } from './agent-link.js';
 import { Aggregator } from './aggregator.js';
+import { CycleDetector, describePhase } from './cycles.js';
 import { BOT_COMMANDS, createCommandHandler } from './commands.js';
 import { loadEnvConfig, loadSupervisorConfig } from './config.js';
 import { Database, EventStore, StateStore } from './db.js';
@@ -65,6 +66,17 @@ const interlock = new Interlock(config.interlock, {
 const health = new HealthMonitor(config.health);
 const aggregator = new Aggregator({ db, state, config: config.aggregation, tables: env.tables });
 const retention = new Retention({ db, state, config: config.retention ?? { enabled: false }, tables: env.tables });
+const cycles = new CycleDetector({ db, state, config: config.cycles, table: env.tables.battery, onPhase: notifyPhase });
+
+// Only phases that just ended: the first run also goes through the old data
+function notifyPhase(phase) {
+	const now = Date.now();
+	if (now - phase.endedAt > 3600000) return;
+	const message = describePhase(phase);
+	console.log(`[CYCLES] ${message}`);
+	events.record({ key: 'battery:phase_completed', source: 'battery', type: 'phase_completed', severity: 'info', message, details: phase }, now);
+	if (phase.durationS >= (config.cycles?.notifyMinMinutes ?? 10) * 60) bot.send(`🔋 ${message}`);
+}
 
 function activeProfile() {
 	return resolveActiveProfile(profiles, {
@@ -190,6 +202,7 @@ function status() {
 		openEvents: events.openEvents().map(({ key, severity, message, openedAt }) => ({ key, severity, message, openedAt })),
 		health: health.last,
 		agent: agentLink.launcher,
+		batteryPhase: cycles.inProgress(),
 		databaseReady: db.ready
 	};
 }
@@ -221,6 +234,7 @@ db.start(async () => {
 	await state.flush();
 	eventStore.pump();
 	aggregator.run();
+	cycles.run();
 });
 
 const timers = [
@@ -243,6 +257,8 @@ const timers = [
 	setInterval(async () => engine.setHealth(await health.check()), config.health.intervalSeconds * 1000),
 
 	setInterval(() => aggregator.run(), config.aggregation.intervalSeconds * 1000),
+
+	setInterval(() => cycles.run(), (config.cycles?.intervalSeconds ?? 60) * 1000),
 
 	setInterval(() => triage.tick().catch((error) => console.error('[ERROR] Triage failed:', error.message)), (config.triage?.checkSeconds ?? 60) * 1000),
 

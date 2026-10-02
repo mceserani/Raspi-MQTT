@@ -1,3 +1,4 @@
+import { buildCyclesResult } from './cycles.js';
 import { checkReadonlySql, compactRows, formatLocal, parseTime, roundValue } from './format.js';
 import { buildReportData, floorToHour } from './report.js';
 import { AGENT_COMMANDS, commandBounds, statusAgeSeconds, validateBatteryCommand } from './validation.js';
@@ -64,7 +65,8 @@ export function createTools({ bus, db, notes, config, batteryTable = 'battery_me
 				setpointVoltageMv: b.voltageSetpointMv,
 				setpointCurrentMa: b.currentSetpointMa,
 				batteryType: b.batteryType,
-				ageS: Math.round(b.ageSeconds + age)
+				ageS: Math.round(b.ageSeconds + age),
+				...(status.batteryPhase ? { phase: { ...status.batteryPhase, since: formatLocal(status.batteryPhase.since, { seconds: false }) } } : {})
 			} : null;
 
 			const profile = status.profile ?? {};
@@ -199,6 +201,29 @@ export function createTools({ bus, db, notes, config, batteryTable = 'battery_me
 					batteryTable,
 					maxGroups: config.reports?.maxEventGroups ?? 15
 				});
+			} catch (error) {
+				throw new ToolError(`errore MariaDB: ${error.sqlMessage ?? error.message}`);
+			}
+		},
+
+		async get_battery_cycles({ since = config.cycles?.defaultSince ?? '-30d', limit }) {
+			const sinceMs = parseTime(since, now());
+			const maxPhases = config.cycles?.maxPhases ?? 100;
+			const max = Math.min(limit ?? maxPhases, maxPhases);
+			try {
+				const rows = await db.query(
+					`SELECT * FROM battery_phases WHERE started_at >= ? ORDER BY started_at DESC LIMIT ${Number(max) + 1}`,
+					[new Date(sinceMs)],
+					{ rowLimit: max + 1 }
+				);
+				const [state] = await db.query("SELECT state_value FROM supervisor_state WHERE state_key = 'cycles'");
+				let saved = null;
+				try {
+					saved = state?.state_value ? JSON.parse(state.state_value) : null;
+				} catch {
+					// Without the open phase the rest is still valid
+				}
+				return buildCyclesResult({ rows: rows.slice(0, max), truncated: rows.length > max, saved, now: now(), sinceMs, maxRestHours: config.cycles?.maxRestHours ?? 24 });
 			} catch (error) {
 				throw new ToolError(`errore MariaDB: ${error.sqlMessage ?? error.message}`);
 			}
