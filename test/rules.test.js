@@ -148,6 +148,23 @@ test('discharge current is compared in absolute value', () => {
 	assert.ok(!keys(engine.evaluate(end)).includes('battery:current_deviation'));
 });
 
+test('discharge: current below the setpoint only far from the voltage setpoint', () => {
+	const run = (voltageMeasuredMv) => {
+		const engine = new RuleEngine(config, { profileProvider: usable });
+		engine.evaluate(T0);
+		const end = T0 + (config.battery.settleSeconds + config.battery.sustain + 1) * 1000;
+		for (let t = T0; t <= end; t += 1000) {
+			engine.onBattery(batteryState({ runState: 2, currentMeasuredMa: -323, voltageSetpointMv: 3200, voltageMeasuredMv }), t);
+			feedLab(engine, t, t);
+			engine.evaluate(t);
+		}
+		return keys(engine.evaluate(end)).includes('battery:current_deviation');
+	};
+	// Seen on the Pi on 2026-10-03: voltage settled at 3225 mV, current 500 -> 323 mA
+	assert.equal(run(3225), false);
+	assert.equal(run(3600), true);
+});
+
 test('running battery without a usable profile', () => {
 	const engine = new RuleEngine(config, { profileProvider: () => ({ usable: false }) });
 	engine.evaluate(T0);

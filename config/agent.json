@@ -74,7 +74,7 @@
       "ask": {
         "model": "sonnet",
         "maxTurns": 12,
-        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "get_procedures", "start_procedure", "stop_procedure"]
+        "tools": ["get_report_data", "get_battery_cycles", "get_live_status", "get_service_health", "get_summary", "get_events", "query_readonly", "read_notes", "write_notes", "get_procedures", "start_procedure", "stop_procedure"]
       },
       "triage": {
         "model": "haiku",

@@ -332,8 +332,12 @@ export class RuleEngine {
 					details: { voltageMv: voltage, setpointMv: state.voltageSetpointMv }
 				});
 			}
-		} else if (Math.abs(current - setpoint) > tolerance) {
-			deviation = current > setpoint ? 'sopra' : 'sotto';
+		} else if (current > setpoint + tolerance) {
+			deviation = 'sopra';
+		} else if (current < setpoint - tolerance && voltage > state.voltageSetpointMv + cfg.cvBandMv) {
+			// Discharge: the bench also tapers the current once the voltage
+			// reaches the setpoint (on the Pi it settles about 25 mV above it)
+			deviation = 'sotto';
 		}
 
 		if (deviation) {

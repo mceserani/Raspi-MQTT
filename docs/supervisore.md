@@ -52,7 +52,7 @@ Nel simulatore: `fault overvoltage`, `set pm2_5 120`, `pause lab 60`, `fault run
 | Lettura fuori dall'intervallo plausibile `valid` | `lab:invalid:<sensore>` | warning |
 | Variazione rapida (escursione > `maxDelta` in `per` secondi) | `lab:rate:<sensore>` | warning |
 | Nessun dato da `staleSeconds` | `lab:stale`, `battery:stale` | warning (critical se la batteria era in marcia) |
-| Corrente lontana dal setpoint (in carica solo in fase CC) | `battery:current_deviation` | warning |
+| Corrente lontana dal setpoint (sotto il setpoint è normale quando la tensione è entro `cvBandMv` dal setpoint: fase CV in carica, tratto finale della scarica) | `battery:current_deviation` | warning |
 | Tensione in carica sopra il setpoint | `battery:voltage_over_setpoint` | warning |
 | Batteria in marcia senza profilo utilizzabile | `battery:no_profile` | warning |
 | Cambio di `run_state` senza un ack di comando | `battery:uncommanded_run_state` | warning |

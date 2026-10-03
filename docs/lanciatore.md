@@ -51,7 +51,7 @@ Tipi di lavoro:
 
 | Tipo | Chi lo lancia | Modello | Riserva | Strumenti |
 |---|---|---|---|---|
-| `ask` | `/ask` da Telegram | Sonnet | 0 | lettura, `start_procedure` e `stop_procedure` (niente comandi diretti né note) |
+| `ask` | `/ask` da Telegram | Sonnet | 0 | lettura, `start_procedure`, `stop_procedure` e `write_notes` solo su richiesta esplicita (niente comandi diretti) |
 | `triage` | supervisore, sugli eventi warning/critical | Haiku | 3 | lettura, note, `send_telegram`, `request_escalation` |
 | `investigate` | supervisore, su `request_escalation` del triage | Sonnet | 2 | lettura, `query_readonly`, note, `send_telegram`, `stop_procedure` |
 | `report_daily` | supervisore, ogni giorno alle 18:00 | Haiku | 1 | lettura (con `get_report_data`), note |
