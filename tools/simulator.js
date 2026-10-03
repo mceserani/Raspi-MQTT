@@ -103,7 +103,9 @@ export class BatteryModel {
 			const cvLimitMa = Math.max(0, (this.voltageSetpointMv - this.ocvMv) / this.resistanceOhm);
 			this.currentMa = Math.min(Math.abs(this.currentSetpointMa), cvLimitMa);
 		} else if (this.runState === 2) {
-			this.currentMa = this.soc > 0 ? -Math.abs(this.currentSetpointMa) : 0;
+			// Like the real bench, discharge stops at the voltage setpoint
+			const cvLimitMa = Math.max(0, (this.ocvMv - this.voltageSetpointMv) / this.resistanceOhm);
+			this.currentMa = this.soc > 0 ? -Math.min(Math.abs(this.currentSetpointMa), cvLimitMa) : 0;
 		} else {
 			this.currentMa = 0;
 		}
@@ -134,6 +136,9 @@ export class BatteryModel {
 				if (![0, 1, 2].includes(number)) {
 					throw new Error('set_run_state supports only 0, 1 or 2');
 				}
+				// The real bench accepts the write but does not start a charge at
+				// or above the voltage setpoint, nor a discharge at or below it
+				if ((number === 1 && this.ocvMv >= this.voltageSetpointMv) || (number === 2 && this.ocvMv <= this.voltageSetpointMv)) break;
 				this.runState = number;
 				break;
 			case 405:

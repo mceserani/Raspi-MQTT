@@ -130,7 +130,8 @@ export function formatNotification(event, kind) {
 	return `${prefix}${ICONS[event.severity] ?? ''} ${event.message}`;
 }
 
-// Decides what reaches Telegram: minimum severity, resolved events, and at most
+// Decides what reaches Telegram: minimum severity, resolved events, silent events
+// (sent by their source), and at most
 // maxMessagesPerMinute messages (critical ones always go through).
 export class Notifier {
 	constructor({ bot, config, log = console, now = () => Date.now() }) {
@@ -144,6 +145,8 @@ export class Notifier {
 	}
 
 	shouldNotify(event, kind) {
+		// Already sent by whoever recorded it (procedures)
+		if (event.silent) return false;
 		const min = SEVERITY_RANK[this.config.notifyMinSeverity];
 		if (kind === 'resolved') {
 			return this.config.notifyResolved && SEVERITY_RANK[event.peakSeverity ?? event.severity] >= min;

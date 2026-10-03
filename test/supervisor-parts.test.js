@@ -104,7 +104,7 @@ test('EventManager: open, escalate, resolve, one-shot', () => {
 });
 
 // ─── telegram ──────────────────────────────────────────────────────────────
-test('Notifier: minimum severity, resolved, rate limit with critical bypass', () => {
+test('Notifier: minimum severity, silent, resolved, rate limit with critical bypass', () => {
 	const sent = [];
 	let now = 0;
 	const notifier = new Notifier({ bot: { send: (text) => sent.push(text) }, config: { notifyMinSeverity: 'warning', notifyResolved: true, maxMessagesPerMinute: 2 }, log: silentLog, now: () => now });
@@ -112,6 +112,8 @@ test('Notifier: minimum severity, resolved, rate limit with critical bypass', ()
 
 	notifier.notify(e('info'), 'open');
 	assert.equal(sent.length, 0);
+	notifier.notify({ ...e('warning'), silent: true }, 'oneshot');
+	assert.equal(sent.length, 0, 'silent: already sent by its source');
 	notifier.notify(e('warning'), 'open');
 	notifier.notify(e('warning'), 'resolved');
 	notifier.notify(e('warning'), 'open');

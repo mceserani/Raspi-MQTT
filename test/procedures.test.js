@@ -30,7 +30,7 @@ test('validation: steps, limits of the profile, repeat and total duration', () =
 	assert.match(refuse({ steps: [{ ...CHARGE, until: { voltageAboveMv: 4210 } }] }), /oltre il setpoint/);
 	assert.match(refuse({ steps: [{ ...CHARGE, until: { voltageBelowMv: 3500 } }] }), /condizioni non previste per la carica: voltageBelowMv/);
 	assert.match(refuse({ steps: [{ ...CHARGE, until: { currentBelowMa: 1000 } }] }), /sotto il setpoint/);
-	assert.match(refuse({ steps: [{ ...DISCHARGE, until: { voltageBelowMv: 2900 } }] }), /voltageBelowMv intero da 3030/);
+	assert.match(refuse({ steps: [{ ...DISCHARGE, until: { voltageBelowMv: 3000 } }] }), /voltageBelowMv intero dal setpoint 3100 .*sotto il setpoint non si raggiunge/);
 	assert.match(refuse({ steps: [{ ...REST, currentMa: 5 }] }), /campi non previsti currentMa/);
 	assert.match(refuse({ steps: [{ type: 'pulse' }] }), /type deve essere/);
 	assert.match(refuse({ steps: [CHARGE], repeat: 11 }), /repeat/);
@@ -40,7 +40,9 @@ test('validation: steps, limits of the profile, repeat and total duration', () =
 });
 
 // Simulated bench: charge rises 2 mV/s up to the setpoint, then the current
-// tapers by 5 %/s; discharge drops 2 mV/s. One sample per second.
+// tapers by 5 %/s; discharge drops 2 mV/s. One sample per second. Like the real
+// bench, it does not start a charge at or above the voltage setpoint, nor a
+// discharge at or below it.
 function bench({ v0 = 3700, latched = null, ntc = 25, ackOk = true, profileUsable = true } = {}) {
 	const sim = { t: T0, at: T0, state: { runState: 0, currentSetpointMa: 500, voltageSetpointMv: 4200, currentMeasuredMa: 0, voltageMeasuredMv: v0 }, latched, frozen: false };
 	const notified = [];
@@ -86,7 +88,10 @@ function bench({ v0 = 3700, latched = null, ntc = 25, ackOk = true, profileUsabl
 				if (!ackOk) return { ok: false, message: 'timeout' };
 				if (command === 'set_current_ma') sim.state.currentSetpointMa = value;
 				if (command === 'set_voltage_mv') sim.state.voltageSetpointMv = value;
-				if (command === 'set_run_state') sim.state.runState = value;
+				if (command === 'set_run_state') {
+					const { voltageMeasuredMv: v, voltageSetpointMv: sp } = sim.state;
+					if (value === 0 || (value === 1 && v < sp) || (value === 2 && v > sp)) sim.state.runState = value;
+				}
 				return { ok: true };
 			},
 			stop: (source) => {
@@ -182,6 +187,8 @@ test('runner: refused start, failed command, restart recovery', async () => {
 	assert.match(bench({ ntc: null }).runner.start({ name: 'x', steps: [CHARGE] }).reason, /NTC/);
 	assert.match(bench({ ntc: 41 }).runner.start({ name: 'x', steps: [CHARGE] }).reason, /sopra il massimo/);
 	assert.match(bench({ v0: 4200 }).runner.start({ name: 'x', steps: [CHARGE] }).reason, /già al limite di carica/);
+	assert.match(bench({ v0: 3700 }).runner.start({ name: 'x', steps: [{ ...CHARGE, voltageMv: 3600, until: {} }] }).reason, /già al setpoint di carica 3600 mV o sopra/);
+	assert.match(bench({ v0: 3370 }).runner.start({ name: 'x', steps: [{ ...DISCHARGE, voltageMv: 4200, until: {} }] }).reason, /già al setpoint di scarica 4200 mV o sotto: il banco non scaricherebbe/);
 	assert.match(bench({ profileUsable: false }).runner.start({ name: 'x', steps: [CHARGE] }).reason, /nessun profilo/);
 	assert.match(bench().runner.start({ name: 'x', steps: [{ ...CHARGE, currentMa: 5000 }] }).reason, /currentMa/);
 
@@ -190,6 +197,16 @@ test('runner: refused start, failed command, restart recovery', async () => {
 	assert.match(busy.runner.start({ name: 'Due', steps: [REST] }).reason, /già in corso/);
 	await busy.runner.done;
 	assert.match(busy.runner.stop().reason, /nessuna procedura/);
+
+	// Discharge setpoint above the voltage reached after charge and rest: the
+	// step is refused before any command, with the reason
+	const above = bench({ v0: 3300 });
+	above.runner.start({ name: 'Sopra', steps: [{ ...CHARGE, maxMinutes: 1, until: {} }, REST, { ...DISCHARGE, voltageMv: 4200, until: {} }] });
+	await above.runner.done;
+	assert.match(above.store.updated.at(-1).endMessage, /interrotta al passo 3\/3: avvio della scarica non possibile: tensione \d+ mV già al setpoint di scarica 4200 mV/);
+	assert.ok(!above.commands.some(([command, value]) => command === 'set_run_state' && value === 2));
+	assert.ok(above.events.every((event) => event.silent));
+	assert.equal(above.notified.filter((text) => text.startsWith('⚠️')).length, 1);
 
 	const nack = bench({ ackOk: false });
 	nack.runner.start({ name: 'Nack', steps: [CHARGE] });

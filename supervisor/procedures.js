@@ -90,8 +90,8 @@ export function validateProcedure(spec, { limits, config }) {
 		if (until.voltageAboveMv !== undefined && !isInt(until.voltageAboveMv, bounds.voltageMinMv, step.voltageMv)) {
 			return refuse(`${at}: until.voltageAboveMv intero da ${bounds.voltageMinMv} al setpoint ${step.voltageMv} mV (oltre il setpoint non si raggiunge)`);
 		}
-		if (until.voltageBelowMv !== undefined && !isInt(until.voltageBelowMv, bounds.voltageMinMv, bounds.voltageMaxMv)) {
-			return refuse(`${at}: until.voltageBelowMv intero da ${bounds.voltageMinMv} a ${bounds.voltageMaxMv} mV`);
+		if (until.voltageBelowMv !== undefined && !isInt(until.voltageBelowMv, step.voltageMv, bounds.voltageMaxMv)) {
+			return refuse(`${at}: until.voltageBelowMv intero dal setpoint ${step.voltageMv} a ${bounds.voltageMaxMv} mV (sotto il setpoint non si raggiunge)`);
 		}
 		if (until.currentBelowMa !== undefined && !isInt(until.currentBelowMa, 1, step.currentMa - 1)) {
 			return refuse(`${at}: until.currentBelowMa intero da 1 a ${step.currentMa - 1} mA (sotto il setpoint)`);
@@ -135,7 +135,8 @@ function procedureId(ms) {
 // io: command(command, value) -> Promise<{ ok, message }> through the bridge;
 //     stop(source) straight to dispatch; battery() -> { state, at } | null;
 //     context() -> { profile, latched, ntc: { value, at } | null };
-//     notify(text); event(oneShot); finished(procedure)
+//     notify(text); event(oneShot), marked silent: the runner notifies Telegram itself;
+//     finished(procedure)
 // store: insert(procedure), update(procedure) (best effort, never awaited by the loop)
 export class ProcedureRunner {
 	constructor({ config, io, store, state, log = console, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
@@ -189,6 +190,10 @@ export class ProcedureRunner {
 		const v = battery.state.voltageMeasuredMv;
 		if (step?.type === 'charge' && v >= bounds.voltageMaxMv) return `tensione ${v} mV già al limite di carica (${bounds.voltageMaxMv} mV)`;
 		if (step?.type === 'discharge' && v <= bounds.voltageMinMv) return `tensione ${v} mV già al limite di scarica (${bounds.voltageMinMv} mV)`;
+		// The bench drives the battery towards the voltage setpoint: it does not
+		// charge above it nor discharge below it, and refuses to start otherwise
+		if (step?.type === 'charge' && v >= step.voltageMv) return `tensione ${v} mV già al setpoint di carica ${step.voltageMv} mV o sopra: il banco non caricherebbe`;
+		if (step?.type === 'discharge' && v <= step.voltageMv) return `tensione ${v} mV già al setpoint di scarica ${step.voltageMv} mV o sotto: il banco non scaricherebbe (in scarica voltageMv è la tensione finale, sotto quella attuale)`;
 		return null;
 	}
 
@@ -222,7 +227,7 @@ export class ProcedureRunner {
 		this.store.insert(p);
 		this.state?.set('procedure.running', { id: p.id, name: p.name, startedAt: now });
 		const text = `Procedura ${p.id} avviata (${requestedBy}): ${p.name} — ${p.steps.length} passi, al massimo ${Math.round(p.maxMinutes / 6) / 10} h, profilo ${p.profile}.${reason ? ` Motivo: ${reason}` : ''}`;
-		this.io.event({ key: 'procedure:started', source: 'procedure', type: 'started', severity: 'info', message: text, details: { id: p.id, spec } });
+		this.io.event({ key: 'procedure:started', source: 'procedure', type: 'started', severity: 'info', silent: true, message: text, details: { id: p.id, spec } });
 		this.io.notify(`▶️ ${text}\n${spec.steps.map((s, i) => `${i + 1}. ${describeStep(s)}`).join('\n')}${(spec.repeat ?? 1) > 1 ? `\n× ${spec.repeat}` : ''}`);
 		this.log.log(`[PROCEDURE] ${text}`);
 		this.done = this.execute();
@@ -244,7 +249,7 @@ export class ProcedureRunner {
 		this.io.stop('procedure-restart');
 		this.store.update({ id: saved.id, endedAt: this.now(), status: 'aborted', endMessage: message, results: null });
 		this.state.set('procedure.running', null);
-		this.io.event({ key: 'procedure:aborted', source: 'procedure', type: 'aborted', severity: 'warning', message: `Procedura ${saved.id} (${saved.name}) ${message}`, details: saved });
+		this.io.event({ key: 'procedure:aborted', source: 'procedure', type: 'aborted', severity: 'warning', silent: true, message: `Procedura ${saved.id} (${saved.name}) ${message}`, details: saved });
 		this.io.notify(`⚠️ Procedura ${saved.id} (${saved.name}) ${message}.`);
 	}
 
@@ -272,7 +277,7 @@ export class ProcedureRunner {
 		this.state?.set('procedure.running', null);
 		const text = `Procedura ${p.id} (${p.name}) ${message}`;
 		this.log.log(`[PROCEDURE] ${text}`);
-		this.io.event({ key: `procedure:${status}`, source: 'procedure', type: status, severity: status === 'aborted' ? 'warning' : 'info', message: text, details: { id: p.id, results: p.results } });
+		this.io.event({ key: `procedure:${status}`, source: 'procedure', type: status, severity: status === 'aborted' ? 'warning' : 'info', silent: true, message: text, details: { id: p.id, results: p.results } });
 		this.io.notify(`${status === 'completed' ? '✅' : status === 'stopped' ? '⏹️' : '⚠️'} ${text}`);
 		this.current = null;
 		this.io.finished?.({ id: p.id, name: p.name, status, message, startedAt: p.startedAt, endedAt });

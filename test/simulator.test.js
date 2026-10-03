@@ -30,8 +30,22 @@ test('CC/CV charge: current tapers and voltage stays near the setpoint', () => {
 	assert.ok(Math.abs(battery.read().voltageMeasuredMv - 4200) < 10);
 });
 
+test('like the bench, no charge above nor discharge below the voltage setpoint', () => {
+	const battery = new BatteryModel({ soc: 0.3 });
+	battery.applyCommand({ command: 'set_run_state', value: 2 });
+	assert.equal(battery.runState, 0, 'discharge with the setpoint at 4200 mV does not start');
+	battery.applyCommand({ command: 'set_voltage_mv', value: 3200 });
+	battery.applyCommand({ command: 'set_run_state', value: 1 });
+	assert.equal(battery.runState, 0, 'charge with the setpoint below the voltage does not start');
+	battery.applyCommand({ command: 'set_run_state', value: 2 });
+	assert.equal(battery.runState, 2);
+	for (let i = 0; i < 4 * 3600; i++) battery.step(1);
+	assert.ok(Math.abs(battery.ocvMv - 3200) < 10, `discharge stops at the setpoint, got ${battery.ocvMv}`);
+});
+
 test('discharge gives negative current and stops at empty', () => {
 	const battery = new BatteryModel({ soc: 0.01 });
+	battery.applyCommand({ command: 'set_voltage_mv', value: 2900 });
 	battery.applyCommand({ command: 'set_run_state', value: 2 });
 	battery.step(1);
 	assert.ok(battery.currentMa < 0);

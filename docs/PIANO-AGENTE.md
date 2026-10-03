@@ -2,13 +2,13 @@
 
 > Documento di lavoro per riprendere il progetto in sessioni successive.
 > Stato: **implementazione in corso sul ramo `feat/agente`** — vedi §9 per l'avanzamento.
-> Ultimo aggiornamento: 2026-10-02
+> Ultimo aggiornamento: 2026-10-03
 
 ---
 
-## ▶ Punto di ripartenza (aggiornato 2026-10-02)
+## ▶ Punto di ripartenza (aggiornato 2026-10-03)
 
-**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage), fase 3c (report, verificata sul Pi), pulizia del database (in prova a vuoto), fase 4a (fasi e cicli della batteria, verificata sul Pi) e fase 4b (procedure batteria, da verificare sul Pi). Sul PC: 118 test verdi (`npm test`), procedura completa provata con simulatore, bridge e supervisore (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
+**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage), fase 3c (report, verificata sul Pi), pulizia del database (attiva dal 03/10), fase 4a (fasi e cicli della batteria, verificata sul Pi) e fase 4b (procedure batteria, da verificare sul Pi). Sul PC: 119 test verdi (`npm test`), procedura completa provata con simulatore, bridge e supervisore (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
 
 **Sul Pi (30/09):** passi 1–6 della fase 1 completati (prerequisiti, token Claude, bot Telegram con chat_id, supervisore installato, verifiche MariaDB). Il supervisore gira in osservazione **fino a venerdì mattina (2026-10-02)**: annotare eventi falsi o mancanti, segno della corrente in scarica, comportamento del registro 405.
 
@@ -20,13 +20,15 @@
 
 Nei prossimi giorni: annotare i triage inutili o sbagliati (servono a migliorare `CLAUDE.md` e le soglie) e, da venerdì 2026-10-02, riportare le osservazioni del supervisore (eventi falsi o mancanti, segno della corrente in scarica, registro 405).
 
-**Fase 3c verificata sul Pi (02/10):** `/report`, report giornalieri e primo report settimanale arrivati e corretti. Corretto un primo problema: l'agente provava a inviare il report con `send_telegram` e, negato lo strumento, chiedeva conferma all'utente; ora le istruzioni vietano le richieste di conferma. Report giornaliero alle **18:00 con Haiku**, settimanale il **venerdì alle 15:00 con Sonnet**, `/report [giorno|settimana]` con Sonnet. Nuovo strumento MCP `get_report_data` (numeri già calcolati: statistiche, copertura, confronto con il periodo precedente, ore di picco, valori guida OMS, attività batteria, eventi raggruppati); report a delta con le note `report-giornaliero` e `report-settimanale`. Il venerdì arrivano entrambi i report. Le query SQL del nuovo strumento non sono state provate su MariaDB reale (sul PC non c'è): verificarle sul Pi con `mcp-call get_report_data`, anche su 7 giorni (la query sulla tabella grezza della batteria ha un limite di 10 s).
+**Fase 3c verificata sul Pi (02/10):** `/report`, report giornalieri e primo report settimanale arrivati e corretti. Corretto un primo problema: l'agente provava a inviare il report con `send_telegram` e, negato lo strumento, chiedeva conferma all'utente; ora le istruzioni vietano le richieste di conferma. Report giornaliero alle **18:00 con Haiku**, settimanale il **venerdì alle 15:00 con Sonnet**, `/report [giorno|settimana]` con Sonnet. Nuovo strumento MCP `get_report_data` (numeri già calcolati: statistiche, copertura, confronto con il periodo precedente, ore di picco, valori guida OMS, attività batteria, eventi raggruppati); report a delta con le note `report-giornaliero` e `report-settimanale`. Il venerdì arrivano entrambi i report. Query SQL di `get_report_data` verificate sul Pi il 03/10 con `mcp-call`, anche su 7 giorni.
 
-**Pulizia del database:** la prova a vuoto della notte del 02/10 (`retention.last`) avrebbe cancellato 15.590 righe del laboratorio e 12.618 della batteria ferma, anteriori al 18/09: dati di prima del supervisore, mai riassunti. Corretto (02/10): la pulizia non tocca le righe anteriori al primo riassunto orario. Passi sul Pi: `git pull`, `sudo systemctl restart raspi-supervisor`; il 03/10 controllare `SELECT state_value FROM supervisor_state WHERE state_key = 'retention.last'` → tutti i conteggi a 0 (i dati riassunti hanno meno di 14 giorni). Se torna, `dryRun: false` in `config/supervisor.json`; la prima cancellazione vera sarà verso il 14/10. Il log si legge con `journalctl --namespace=raspi-agent -u raspi-supervisor | grep RETENTION` (journal separato e persistente dal 02/10: quello normale è in RAM e i `[DEBUG]` dei servizi esistenti lo riempiono in meno di un'ora). Nei dati del 01/10 non ci sono scariche (`run_state` solo 0 e 1): per il segno della corrente serve una prova di scarica.
+**Pulizia del database:** la prova a vuoto della notte del 02/10 avrebbe cancellato 15.590 righe del laboratorio e 12.618 della batteria ferma, anteriori al primo riassunto: dati di prima del supervisore. Corretto il 02/10: la pulizia non tocca le righe anteriori al primo riassunto orario (sul Pi: 2026-09-29 08:00). Prova a vuoto del 03/10 alle 03:00 verificata sul Pi: tutti i conteggi a 0, come atteso. Dal 03/10 `dryRun: false`: la prima cancellazione vera sarà la notte del **14/10** (grezzi dal 29/09 08:00 al 30/09 03:00); il giorno dopo controllare `retention.last` (`dryRun: false`, conteggi plausibili). Il log si legge con `journalctl --namespace=raspi-agent -u raspi-supervisor | grep RETENTION` (journal separato e persistente dal 02/10: quello normale è in RAM e i `[DEBUG]` dei servizi esistenti lo riempiono in meno di un'ora).
 
 **Fase 4a verificata sul Pi (02/10):** il supervisore riconosce cariche e scariche dai cambi di `run_state` e le salva in `battery_phases` (durata, mAh, Wh, segno della corrente, tensioni, CC/CV, resistenza interna stimata), con evento e messaggio 🔋 a fine fase. Strumento MCP `get_battery_cycles`: fasi, cicli carica → scarica con efficienza, segno osservato della corrente, fase in corso. Il calcolo non dipende dalla convenzione del segno. La tabella si chiama `battery_phases`; i cicli si formano nello strumento.
 
 **Fase 4b (02/10): procedure batteria.** L'agente consegna con `start_procedure` una sequenza di passi (`charge`/`discharge` con setpoint, `maxMinutes` obbligatorio e condizioni `until`; `rest`; `repeat`) e il supervisore la valida contro il profilo attivo e la esegue da solo, con i comandi che passano dal bridge. Ogni anomalia (interblocco, cambio di stato esterno, dati fermi, profilo cambiato, comando senza conferma) ferma la batteria e chiude la procedura; `/stop` e `stop_procedure` la fermano; un riavvio del supervisore la chiude e ferma la batteria. Durante una procedura i comandi diretti dell'agente sono rifiutati. Telegram: ▶️ all'avvio, ✅/⏹️/⚠️ alla fine, `/procedura` per lo stato. A fine procedura un lavoro `procedure` (Sonnet) analizza risultati e fasi. Registro in `battery_procedures`, lettura con `get_procedures`. Solo `/ask` (richiesta esplicita dell'utente) può avviare una procedura; l'indagine può solo fermarla. Dettagli in [supervisore.md](supervisore.md#procedure-batteria).
+
+**Prima prova della 4b sul Pi (03/10, P20261003-100901):** carica e riposo regolari; la scarica non è partita perché il setpoint di tensione era 4200 mV con la batteria a circa 3370 mV. Il banco porta sempre la batteria verso il setpoint (non carica sopra, non scarica sotto): comportamento atteso, si mantiene. Corretto (03/10): prima di ogni passo il supervisore verifica tensione e setpoint e, se il passo non partirebbe, chiude la procedura spiegando il motivo senza inviare il comando; una soglia `voltageBelowMv` sotto il setpoint di scarica viene rifiutata; istruzioni dell'agente e descrizione di `start_procedure` spiegano che in scarica `voltageMv` è la tensione finale; il simulatore fa lo stesso. Corretto anche il ⚠️ doppio su Telegram: gli eventi delle procedure non passano più dal notificatore, che li inviava una seconda volta. Da ripetere: passi 5 e 6 qui sotto.
 
 Passi sul Pi per la 4b:
 1. `cd ~/Raspi-MQTT && git pull`
@@ -38,7 +40,7 @@ Passi sul Pi per la 4b:
 
 ### Prossimo passo di sviluppo
 
-Dopo la verifica della 4b: **fase 4c**, profili reali (valori dai datasheet delle batterie usate; serve l'utente) e prima procedura di caratterizzazione vera (prova di capacità). Segno della corrente verificato il 02/10 (positiva in carica, negativa in scarica). Da riportare: conteggi di `retention.last` per passare a `dryRun: false`, osservazioni del supervisore (eventi falsi o mancanti, registro 405).
+Dopo la verifica della 4b: **fase 4c**, profili reali (valori dai datasheet delle batterie usate; serve l'utente) e prima procedura di caratterizzazione vera (prova di capacità). Segno della corrente verificato il 02/10 (positiva in carica, negativa in scarica). Da riportare: osservazioni del supervisore (eventi falsi o mancanti, registro 405).
 
 ---
 
@@ -307,7 +309,7 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 | 4a | `battery_phases` + `get_battery_cycles` | ✅ verificato sul Pi |
 | 4b | Procedure batteria: `start_procedure`, `stop_procedure`, `get_procedures`, `/procedura`, tabella `battery_procedures` | ✅ fatto (provato con il simulatore, da verificare sul Pi) |
 | 4c | Profili reali | 🟡 primo profilo `liion-18650-2600` (limiti prudenti, da verificare sul banco); altri tipi da definire |
-| 5a | Pulizia del database (`retention`): grezzi del laboratorio e della batteria ferma 14 giorni, prove batteria sempre, riassunti al minuto 1 anno | 🟡 in prova a vuoto (`dryRun`); corretta il 02/10 |
+| 5a | Pulizia del database (`retention`): grezzi del laboratorio e della batteria ferma 14 giorni, prove batteria sempre, riassunti al minuto 1 anno | ✅ prova a vuoto verificata sul Pi (03/10), attiva da `dryRun: false`; prima cancellazione il 14/10 |
 | 5b | Opzionale: snapshot JSON per le dashboard | da decidere |
 
 ### Note di implementazione

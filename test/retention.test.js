@@ -141,8 +141,9 @@ test('rows not yet read by the battery phase detection are kept', async () => {
 	assert.equal(lab.params[0].getTime(), NOW - 20 * DAY);
 });
 
-test('shipped configuration starts as a dry run', async () => {
+// The dry run was checked on the Pi on 2026-10-03: deletion is enabled
+test('shipped configuration is valid and deletes for real', async () => {
 	const supervisor = JSON.parse(await readFile(new URL('../config/supervisor.json', import.meta.url), 'utf8'));
-	assert.equal(supervisor.retention.dryRun, true);
+	assert.equal(supervisor.retention.dryRun, false);
 	assert.doesNotThrow(() => validateRetention(supervisor.retention));
 });
