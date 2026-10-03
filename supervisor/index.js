@@ -3,6 +3,7 @@
 // aggregations, service health and Telegram. Uses 0 tokens.
 import mqtt from 'mqtt';
 import { loadProfiles, resolveActiveProfile } from '../lib/battery-profiles.js';
+import { RunStateTracker, withEffectiveRunState } from '../lib/run-state.js';
 import { AgentLink } from './agent-link.js';
 import { Aggregator } from './aggregator.js';
 import { CycleDetector, describePhase } from './cycles.js';
@@ -67,7 +68,8 @@ const interlock = new Interlock(config.interlock, {
 const health = new HealthMonitor(config.health);
 const aggregator = new Aggregator({ db, state, config: config.aggregation, tables: env.tables });
 const retention = new Retention({ db, state, config: config.retention ?? { enabled: false }, tables: env.tables });
-const cycles = new CycleDetector({ db, state, config: config.cycles, table: env.tables.battery, onPhase: notifyPhase });
+const runStates = new RunStateTracker({ thresholdMa: config.battery?.runStateCurrentMa });
+const cycles = new CycleDetector({ db, state, config: { ...config.cycles, runStateCurrentMa: config.battery?.runStateCurrentMa }, table: env.tables.battery, onPhase: notifyPhase });
 
 // Procedure commands go through the bridge like the dashboards' ones: the ack
 // confirms them and the rules see them as commanded
@@ -208,15 +210,20 @@ client.on('message', (topic, payloadBuffer) => {
 		const value = typeof payload.value === 'number' ? decodeLabValue(sensor, payload.value) : NaN;
 		engine.onLab(sensor, value, now);
 	} else if (topic === TOPICS.batteryState) {
-		engine.onBattery(payload, now);
+		// The register reads 1 in discharge too: everything downstream sees
+		// the effective run state (lib/run-state.js)
+		const battery = withEffectiveRunState(payload, runStates, now);
+		engine.onBattery(battery, now);
 		const profile = activeProfile();
-		interlock.onBatteryState(payload, {
+		interlock.onBatteryState(battery, {
 			profile: profile.usable ? profile.profile : null,
 			profileName: profile.name,
 			ntc: engine.labValue('ntc_temperature')
 		}, now);
 	} else if (topic === TOPICS.ack) {
 		engine.onAck(payload, now);
+		const runCommand = payload.command === 'set_run_state' || (payload.command === 'write_register' && Number(payload.register) === 404);
+		if (payload.status === 'ok' && runCommand) runStates.command(Number(payload.value), now);
 		if (payload.commandId && pendingAcks.has(payload.commandId)) pendingAcks.get(payload.commandId)(payload);
 	} else if (topic === `${env.agentTopic}/procedure`) {
 		handleProcedureRequest(payload);

@@ -75,7 +75,7 @@ const DEFINITIONS = {
 		annotations: readOnly
 	},
 	query_readonly: {
-		description: `Query SQL di sola lettura su MariaDB (database sensor_data), massimo ${config.queries.maxRows} righe e 10 s. Tabelle: labsens_measurements e battery_measurements (grezze, 1 riga/s: filtrare sempre per recorded_at e aggregare), summary_minute, summary_hour, supervisor_events, battery_phases, battery_procedures. Una sola istruzione, niente commenti. Usare solo se get_summary e get_events non bastano.`,
+		description: `Query SQL di sola lettura su MariaDB (database sensor_data), massimo ${config.queries.maxRows} righe e 10 s. Tabelle: labsens_measurements e battery_measurements (grezze, 1 riga/s: filtrare sempre per recorded_at e aggregare; in battery_measurements run_state vale 1 anche in scarica, la direzione è il segno di current_measured_ma), summary_minute, summary_hour, supervisor_events, battery_phases, battery_procedures. Una sola istruzione, niente commenti. Usare solo se get_summary e get_events non bastano.`,
 		inputSchema: { sql: z.string().describe('SELECT, WITH, SHOW, DESCRIBE o EXPLAIN') },
 		annotations: readOnly
 	},

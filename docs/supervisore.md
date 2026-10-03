@@ -115,7 +115,7 @@ L'agente parte dai numeri di `get_report_data` e dalle proprie note (`report-gio
 
 ## Fasi della batteria
 
-Sezione `cycles` di `config/supervisor.json`. Ogni minuto il supervisore legge le righe nuove della tabella grezza della batteria e riconosce le **fasi**: ogni tratto continuo in carica (`run_state` 1) o in scarica (2). Una fase finisce quando cambia `run_state` oppure quando mancano i dati per più di `splitGapSeconds` (10 min). Le fasi più corte di `minPhaseSeconds` (30 s) vengono ignorate. Ogni fase conclusa diventa una riga di `battery_phases`, con:
+Sezione `cycles` di `config/supervisor.json`. Ogni minuto il supervisore legge le righe nuove della tabella grezza della batteria e riconosce le **fasi**: ogni tratto continuo in cui il banco è in funzione (`run_state` diverso da 0). La direzione, carica o scarica, viene dal segno della corrente, perché il registro vale 1 anche in scarica (vedi [Stato di marcia](#stato-di-marcia)). Una fase finisce quando il banco si ferma, quando la corrente cambia segno in modo netto (passaggio diretto da carica a scarica) oppure quando mancano i dati per più di `splitGapSeconds` (10 min). Le fasi più corte di `minPhaseSeconds` (30 s) vengono ignorate. Ogni fase conclusa diventa una riga di `battery_phases`, con:
 
 - durata, capacità (mAh) ed energia (Wh), integrando la corrente e la potenza misurate;
 - segno della corrente (`current_sign`): la capacità è salvata in valore assoluto, quindi il calcolo non dipende dalla convenzione del segno, che si legge dai dati;
@@ -152,6 +152,16 @@ Sezione `procedures` di `config/supervisor.json`. L'agente non pilota la batteri
 Durante una procedura il server MCP rifiuta i comandi diretti dell'agente (tranne lo stop). L'interblocco resta sempre attivo sui valori misurati.
 
 **Messaggi e analisi.** Telegram riceve ▶️ all'avvio (con l'elenco dei passi), ✅ / ⏹️ / ⚠️ alla fine; le singole cariche e scariche arrivano anche come 🔋 dalle fasi. Con `analyzeOnEnd` il supervisore manda all'agente un lavoro `procedure` (Sonnet, un'esecuzione del budget) che legge risultati e fasi e scrive all'utente un'analisi. Ogni procedura è registrata in `battery_procedures`.
+
+## Stato di marcia
+
+Il banco accetta `set_run_state 2` e scarica, ma il registro 404 in lettura vale `1` sia in carica sia in scarica (verificato il 3 ottobre 2026). Il supervisore ricava quindi lo **stato effettivo** (`lib/run-state.js`) e lo usa ovunque: regole, interblocco, procedure, `/status`, stato pubblicato per il server MCP.
+
+- registro a 0: ferma;
+- registro diverso da 0 e corrente oltre `battery.runStateCurrentMa` (20 mA) in valore assoluto: carica se positiva, scarica se negativa;
+- corrente sotto la soglia (inizio di una fase, fine CV): resta il modo già noto, altrimenti quello appena comandato (dall'ack, valido 30 s), altrimenti il valore del registro.
+
+Lo stato pubblicato contiene anche il valore letto (`runStateRaw`). La tabella grezza resta com'è: chi la interroga deve usare il segno della corrente. Funziona anche con un banco che riporti davvero `2`.
 
 ## Pulizia del database
 

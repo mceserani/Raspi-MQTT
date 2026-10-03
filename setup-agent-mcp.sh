@@ -44,7 +44,7 @@ echo "[+] Installing the MCP server in ${INSTALL_DIR}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "${STAGING}"' EXIT
 mkdir -p "${STAGING}/config" "${STAGING}/tools"
-cp -a mcp agent package.json node_modules "${STAGING}/"
+cp -a mcp agent lib package.json node_modules "${STAGING}/"
 cp config/agent.json "${STAGING}/config/"
 cp tools/mcp-call.js "${STAGING}/tools/"
 

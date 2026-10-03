@@ -3,8 +3,15 @@
 // CC/CV time and internal resistance computed here. The MCP tool
 // get_battery_cycles pairs them into cycles; the agent only interprets.
 //
-// The current is integrated with its sign and the magnitude is stored: no
-// assumption on the sign convention, which is recorded per phase (currentSign).
+// The current is integrated with its sign and the magnitude is stored; the
+// observed sign is recorded per phase (currentSign).
+//
+// The run state register reads 1 in discharge too (lib/run-state.js): a phase
+// starts and ends on the register (running or stopped), its direction comes
+// from the current, and an established current of the opposite sign (charge
+// switched to discharge without a stop) ends it and starts the next one.
+
+import { currentDirection, RUN_STATE_CURRENT_MA } from '../lib/run-state.js';
 
 const HOUR_MS = 3600000;
 const RUN_STATES = { 1: 'carica', 2: 'scarica' };
@@ -70,6 +77,7 @@ export class PhaseTracker {
 			ccTolerancePct: 5,
 			cvToleranceMv: 20,
 			restWindowSeconds: 10,
+			runStateCurrentMa: RUN_STATE_CURRENT_MA,
 			...config
 		};
 		this.open = saved?.open ?? null;
@@ -84,17 +92,23 @@ export class PhaseTracker {
 		const closed = [];
 		const c = this.config;
 		const o = this.open;
+		const running = row.state === 1 || row.state === 2;
+		const direction = running ? currentDirection(row.i, c.runStateCurrentMa) : 0;
 		if (o) {
 			if (row.t - o.lastT > c.splitGapSeconds * 1000) {
 				closed.push(this.close('data_gap', null, null));
-			} else if (row.state !== o.state) {
+			} else if (!running) {
 				closed.push(this.close('state_change', row.state, row));
+			} else if (direction && o.direction && direction !== o.direction) {
+				closed.push(this.close('state_change', direction, row));
 			} else {
 				this.accumulate(row);
+				o.direction ||= direction;
 			}
 		}
-		if (!this.open && (row.state === 1 || row.state === 2)) {
+		if (!this.open && running) {
 			this.start(row);
+			this.open.direction = direction;
 		}
 		this.last = { t: row.t, state: row.state, v: row.v };
 		return closed.filter((phase) => phase.durationS >= c.minPhaseSeconds);
@@ -201,7 +215,7 @@ export class PhaseTracker {
 		return {
 			startedAt: o.startT,
 			endedAt: o.lastT,
-			runState: o.state,
+			runState: o.direction || o.state,
 			batteryType: o.type,
 			endReason,
 			nextState,
@@ -232,7 +246,7 @@ export class PhaseTracker {
 		const o = this.open;
 		if (!o) return null;
 		return {
-			state: RUN_STATES[o.state],
+			state: RUN_STATES[o.direction || o.state],
 			since: o.startT,
 			minutes: Math.round((o.lastT - o.startT) / 60000),
 			chargeMah: Math.round(Math.abs(o.q) / 3600),

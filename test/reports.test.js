@@ -168,14 +168,18 @@ test('summarizeBattery and summarizeEvents', () => {
 	const battery = summarizeBattery([
 		{ run_state: 0, battery_type: 1, samples: 3600, v_min: 3600, v_max: 3700, sum_current: 0, first_at: new Date(FROM), last_at: new Date(FROM + HOUR) },
 		{ run_state: 1, battery_type: 1, samples: 7200, v_min: 3500, v_max: 4200, sum_current: 7200 * 500, first_at: new Date(FROM + HOUR), last_at: new Date(FROM + 3 * HOUR) },
-		{ run_state: 1, battery_type: 3, samples: 600, v_min: 3900, v_max: 4100, sum_current: '300000', first_at: new Date(FROM + 4 * HOUR), last_at: new Date(FROM + 5 * HOUR) }
+		{ run_state: 1, battery_type: 3, samples: 600, v_min: 3900, v_max: 4100, sum_current: '300000', first_at: new Date(FROM + 4 * HOUR), last_at: new Date(FROM + 5 * HOUR) },
+		// Effective state from the query (run_mode): the register reads 1 in discharge
+		{ run_mode: 2, battery_type: 3, samples: 1200, v_min: 3300, v_max: 3900, sum_current: -1200 * 500, first_at: new Date(FROM + 5 * HOUR), last_at: new Date(FROM + 6 * HOUR) }
 	]);
+	assert.equal(battery.states.scarica.minutes, 20);
+	assert.equal(battery.states.scarica.chargeMahEstimate, 167);
 	assert.equal(battery.states.ferma.minutes, 60);
 	assert.equal(battery.states.ferma.chargeMahEstimate, undefined);
 	assert.deepEqual(battery.states.carica.voltageMv, [3500, 4200]);
 	assert.equal(battery.states.carica.minutes, 130);
 	assert.equal(battery.states.carica.chargeMahEstimate, 1083);
-	assert.deepEqual(battery.batteryTypeMinutes, { 1: 180, 3: 10 });
+	assert.deepEqual(battery.batteryTypeMinutes, { 1: 180, 3: 30 });
 
 	const events = summarizeEvents([
 		{ event_key: 'lab:pm2_5:high', peak_severity: 'warning', n: 5n, still_open: '0', duration_s: '1800', example: 'PM2.5 alto' },

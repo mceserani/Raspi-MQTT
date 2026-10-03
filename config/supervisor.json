@@ -48,6 +48,8 @@
   },
 
   "battery": {
+    "$comment": "runStateCurrentMa: il registro dello stato vale 1 anche in scarica; la direzione si ricava dalla corrente misurata (positiva in carica, negativa in scarica) quando supera questa soglia in valore assoluto (lib/run-state.js).",
+    "runStateCurrentMa": 20,
     "staleSeconds": 30,
     "settleSeconds": 20,
     "sustain": 15,

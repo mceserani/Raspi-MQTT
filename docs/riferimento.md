@@ -134,7 +134,7 @@ Stato completo, pubblicato a ogni ciclo e dopo ogni comando (retain).
 | `voltageSetpointMv` | int (con segno) | 401 | Setpoint di tensione, mV |
 | `currentMeasuredMa` | int (con segno) | 402 | Corrente misurata, mA |
 | `voltageMeasuredMv` | int (con segno) | 403 | Tensione misurata, mV |
-| `runState` | int | 404 | `0` fermo, `1` carica, `2` scarica |
+| `runState` | int | 404 | `0` fermo, `1` carica, `2` scarica (in lettura il banco riporta `1` anche in scarica: vedi sotto) |
 | `runStateLabel` | string | — | `stopped`, `charge`, `discharge`, oppure `unknown` per altri valori |
 | `batteryType` | int | 405 | Codice del tipo di batteria (significato definito dal firmware del controller) |
 | `timestamp` | string | — | Istante della lettura, ISO 8601 UTC |
@@ -288,6 +288,8 @@ Lettura per ciclo: una richiesta per 64–69 (6 registri) e una per 34 (1 regist
 | 402 | Corrente misurata | lettura ciclica | int16 con segno, mA |
 | 403 | Tensione misurata | lettura ciclica | int16 con segno, mV |
 | 404 | Stato di marcia | lettura ciclica, scrittura (`set_run_state`) | 0 fermo, 1 carica, 2 scarica |
+
+**Registro 404 in lettura (verificato il 2026-10-03):** il banco accetta `2` e scarica, ma in lettura riporta `1` sia in carica sia in scarica; `2` non compare mai in `battery_measurements`. La direzione si ricava dalla corrente misurata: positiva in carica, negativa in scarica. `battery-mqtt.js` pubblica e salva il valore letto così com'è; il supervisore, le fasi e i report usano lo stato effettivo (`lib/run-state.js`, soglia `battery.runStateCurrentMa` di `config/supervisor.json`).
 | 405 | Tipo batteria | lettura ciclica | codice |
 
 Lettura per ciclo: una richiesta per 400–405 (6 registri). Con `write_register` è possibile scrivere qualsiasi altro registro.
@@ -353,7 +355,7 @@ CREATE TABLE IF NOT EXISTS battery_measurements (
 | `recorded_at` | Istante della lettura Modbus, con millisecondi |
 | `current_setpoint_ma`, `voltage_setpoint_mv` | Setpoint (registri 400, 401) |
 | `current_measured_ma`, `voltage_measured_mv` | Misure (registri 402, 403) |
-| `run_state`, `run_state_label` | Stato di marcia, codice ed etichetta |
+| `run_state`, `run_state_label` | Stato di marcia letto dal registro, codice ed etichetta: `1` / `charge` anche durante le scariche (la direzione è il segno di `current_measured_ma`) |
 | `battery_type` | Registro 405 |
 | `controller_address`, `device_code`, `firmware_version` | Dati del controller letti all'avvio del servizio |
 

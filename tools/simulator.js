@@ -167,8 +167,9 @@ export class BatteryModel {
 			voltageSetpointMv: toSigned16(this.voltageSetpointMv & 0xffff),
 			currentMeasuredMa: Math.round(currentMa),
 			voltageMeasuredMv: Math.round(voltageMv),
-			runState: this.runState,
-			runStateLabel: RUN_STATE_LABELS[this.runState] ?? 'unknown',
+			// Like the real register: 1 in discharge too (lib/run-state.js)
+			runState: this.runState === 0 ? 0 : 1,
+			runStateLabel: RUN_STATE_LABELS[this.runState === 0 ? 0 : 1] ?? 'unknown',
 			batteryType: this.batteryType,
 			timestamp: new Date().toISOString()
 		};

@@ -1,4 +1,5 @@
 import { formatLocal, roundValue } from './format.js';
+import { runStateSql } from '../lib/run-state.js';
 
 // Numbers for the daily and weekly reports, computed here so the agent only
 // interprets them (docs/PIANO-AGENTE.md, 5.4 and 6): one tool call instead of
@@ -89,14 +90,16 @@ export function summarizeMetric(rows, { fromMs, toMs, previousAvg = null, refere
 	return result;
 }
 
-// Raw battery rows grouped by run_state and battery_type -> time in each state.
+// Raw battery rows grouped by effective run state (run_mode, lib/run-state.js:
+// the register reads 1 in discharge too) and battery_type -> time in each state.
 // Charge in mAh = sum of the current samples / 3600 (1 sample per second).
 export function summarizeBattery(rows) {
 	const states = {};
 	const types = {};
 	for (const row of rows) {
 		const samples = Number(row.samples);
-		const label = RUN_STATES[row.run_state] ?? `stato ${row.run_state}`;
+		const mode = Number(row.run_mode ?? row.run_state);
+		const label = RUN_STATES[mode] ?? `stato ${mode}`;
 		const state = (states[label] ??= { minutes: 0, vMin: null, vMax: null, sumCurrent: 0, first: null, last: null });
 		state.minutes += samples / 60;
 		state.vMin = state.vMin === null ? Number(row.v_min) : Math.min(state.vMin, Number(row.v_min));
@@ -115,7 +118,7 @@ export function summarizeBattery(rows) {
 		out[label] = {
 			minutes: roundValue(state.minutes, 0),
 			voltageMv: [state.vMin, state.vMax],
-			...(label === 'ferma' ? {} : { chargeMahEstimate: roundValue(state.sumCurrent / 3600, 0) }),
+			...(label === 'ferma' ? {} : { chargeMahEstimate: roundValue(Math.abs(state.sumCurrent) / 3600, 0) }),
 			first: formatLocal(state.first, { seconds: false }),
 			last: formatLocal(state.last, { seconds: false })
 		};
@@ -214,9 +217,9 @@ export async function buildReportData({ db, fromMs, toMs, references = {}, batte
 	let batteryActivity;
 	try {
 		const rows = await db.query(
-			`SELECT run_state, battery_type, COUNT(*) AS samples, MIN(voltage_measured_mv) AS v_min, MAX(voltage_measured_mv) AS v_max,
+			`SELECT ${runStateSql()} AS run_mode, battery_type, COUNT(*) AS samples, MIN(voltage_measured_mv) AS v_min, MAX(voltage_measured_mv) AS v_max,
 				SUM(current_measured_ma) AS sum_current, MIN(recorded_at) AS first_at, MAX(recorded_at) AS last_at
-			FROM ${batteryTable} WHERE recorded_at >= ? AND recorded_at < ? GROUP BY run_state, battery_type`,
+			FROM ${batteryTable} WHERE recorded_at >= ? AND recorded_at < ? GROUP BY run_mode, battery_type`,
 			[from, to],
 			{ rowLimit: 100 }
 		);

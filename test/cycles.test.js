@@ -73,6 +73,39 @@ test('discharge with negative current: magnitude stored, sign recorded', () => {
 	assert.match(describePhase(phase), /negativa/);
 });
 
+// The real register reads 1 in discharge too (lib/run-state.js)
+test('register at 1 in discharge: direction from the current, switch without a stop splits', () => {
+	const discharge = [
+		...rows(T0, 5, () => ({ run_state: 0, current_measured_ma: 0, voltage_measured_mv: 4100 })),
+		// First samples before the current is established
+		...rows(T0 + 5000, 2, () => ({ run_state: 1, current_setpoint_ma: 500, current_measured_ma: 0, voltage_measured_mv: 4100 })),
+		...rows(T0 + 7000, 600, () => ({ run_state: 1, current_setpoint_ma: 500, current_measured_ma: -500, voltage_measured_mv: 3900 })),
+		...rows(T0 + 607000, 5, () => ({ run_state: 0, current_measured_ma: 0, voltage_measured_mv: 3950 }))
+	];
+	const tracker = new PhaseTracker(CONFIG);
+	const [phase, ...rest] = feed(tracker, discharge);
+	assert.equal(rest.length, 0);
+	assert.equal(phase.runState, 2);
+	assert.equal(phase.startedAt, T0 + 5000);
+	assert.equal(phase.currentSign, -1);
+	assert.equal(phase.rStartMohm, 400);
+	assert.match(describePhase(phase), /^Scarica conclusa/);
+
+	// Charge switched to discharge without a stop: two phases
+	const switched = [
+		...rows(T0, 300, () => ({ run_state: 1, current_measured_ma: 500, voltage_measured_mv: 3800 })),
+		...rows(T0 + 300000, 300, () => ({ run_state: 1, current_measured_ma: -500, voltage_measured_mv: 3700 })),
+		...rows(T0 + 600000, 5, () => ({ run_state: 0, current_measured_ma: 0, voltage_measured_mv: 3750 }))
+	];
+	const phases = feed(new PhaseTracker(CONFIG), switched);
+	assert.deepEqual(phases.map((p) => [p.runState, p.nextState]), [[1, 2], [2, 0]]);
+
+	// In progress: discharge as soon as the current shows it
+	const open = new PhaseTracker(CONFIG);
+	feed(open, discharge.slice(0, 50));
+	assert.equal(open.inProgress().state, 'scarica');
+});
+
 test('gaps: short ones not integrated, long ones split the phase, short phases ignored', () => {
 	const tracker = new PhaseTracker(CONFIG);
 	const list = [
