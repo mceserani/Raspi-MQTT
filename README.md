@@ -6,7 +6,7 @@ Il software interroga periodicamente due dispositivi collegati via RS-485 (adatt
 
 | Dispositivo | Indirizzo Modbus (default) | Cosa fornisce |
 |---|---|---|
-| **Scheda sensori di laboratorio** ("labsens") | `29` | temperatura, umidità, PM10, PM2.5, VOC, NOx, temperatura NTC |
+| **Scheda sensori di laboratorio** ("labsens") | `29` | temperatura, umidità, CO2, PM10, PM2.5, indici VOC e NOx, temperatura NTC |
 | **Controller di carica/scarica batteria** ("battery") | `4` | setpoint e misure di corrente/tensione, stato di marcia, tipo batteria |
 
 Per ogni lettura i valori vengono:

@@ -120,13 +120,17 @@ Se uno qualsiasi dei passi 2–4 fallisce il processo termina con codice 1 e, se
 
 1. Se il ciclo precedente è ancora in corso, il tick viene saltato (flag `isPolling`): i cicli non si sovrappongono mai.
 2. Legge **in sequenza** (mai in parallelo, per non far collidere le richieste sulla linea):
-   - blocco registri **64–69** (6 registri) → ogni valore diviso per **100**;
-   - registro **34** (NTC) → valore diviso per **10**.
-3. Se una delle due letture fallisce, il ciclo viene scartato (nulla viene pubblicato né salvato) e si incrementa il contatore di errori consecutivi (vedi [resilienza](#resilienza-e-gestione-degli-errori)).
-4. Se entrambe riescono, azzera il contatore e in parallelo:
+   - blocco registri **64–69** (6 registri, SEN55) → scala di ciascun registro dal foglio dei registri della scheda: temperatura con segno ÷ 100, umidità ÷ 100, PM10 e PM2.5 ÷ 10, indici VOC e NOx senza divisione (vedi [riferimento](riferimento.md#scheda-sensori-indirizzo-29));
+   - registro **34** (NTC) → con segno ÷ 10;
+   - registro **82** (CO2 dell'SCD30, ppm) → 0 significa nessuna misura ancora (circa 20 s dopo l'accensione) e diventa NULL.
+3. Se fallisce la lettura di 64–69 o di 34, il ciclo viene scartato (nulla viene pubblicato né salvato) e si incrementa il contatore di errori consecutivi (vedi [resilienza](#resilienza-e-gestione-degli-errori)). Una lettura della CO2 non riuscita non scarta il ciclo: `co2` resta NULL.
+4. Altrimenti azzera il contatore e in parallelo:
    - pubblica 6 messaggi su `sensors/lab/<grandezza>`;
    - pubblica 1 messaggio su `sensors/lab/ntc/temperature`;
+   - pubblica `sensors/lab/co2` se c'è un valore;
    - inserisce una riga in `labsens_measurements`.
+
+Fino al 3 ottobre 2026 tutti i registri 64–69 erano divisi per 100 e senza segno (PM 10 volte più bassi, VOC e NOx 100 volte); lo storico è stato ricalcolato con `tools/migrate-sen55-scale.js`.
 
 I messaggi MQTT dei sensori di laboratorio **non** sono `retain`: un client che si collega vede i valori solo dal ciclo successivo.
 

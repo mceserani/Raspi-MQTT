@@ -8,7 +8,7 @@
 
 ## ▶ Punto di ripartenza (aggiornato 2026-10-03)
 
-**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage), fase 3c (report, verificata sul Pi), pulizia del database (attiva dal 03/10), fase 4a (fasi e cicli della batteria, verificata sul Pi) e fase 4b (procedure batteria, verificata sul Pi il 03/10). Sul PC: 125 test verdi (`npm test`), procedura completa provata con simulatore, bridge e supervisore (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
+**Fatto e pubblicato** sul ramo `feat/agente`: fase 0 (fondamenta), fase 1 (supervisore), primo profilo batteria reale (`liion-18650-2600`), fase 2 (server MCP), fase 3a (lanciatore e `/ask`), fase 3b (`CLAUDE.md` e triage), fase 3c (report, verificata sul Pi), pulizia del database (attiva dal 03/10), fase 4a (fasi e cicli della batteria, verificata sul Pi) fase 4b (procedure batteria, verificata sul Pi il 03/10) e misura della CO2 con correzione delle scale del SEN55 (03/10, piano separato: [PIANO-CO2.md](PIANO-CO2.md)). Sul PC: 129 test verdi (`npm test`), procedura completa provata con simulatore, bridge e supervisore (`npm test`) e prove con simulatore, bridge, supervisore, server MCP e lanciatore. Documentazione generale aggiornata (README, architettura, installazione, riferimento, utilizzo, diagnostica).
 
 **Sul Pi (30/09):** passi 1–6 della fase 1 completati (prerequisiti, token Claude, bot Telegram con chat_id, supervisore installato, verifiche MariaDB). Il supervisore gira in osservazione **fino a venerdì mattina (2026-10-02)**: annotare eventi falsi o mancanti, segno della corrente in scarica, comportamento del registro 405.
 
@@ -63,7 +63,7 @@ Vincolo di progetto: **automatizzare via software il più possibile per risparmi
 
 | Servizio | File | Funzione |
 |---|---|---|
-| `raspi-labsens.service` | `labsens-mqtt.js` | Modbus addr 29, registri 64–69 (temperature, humidity, pm10, pm2_5, voc, nox, valori /100) + reg 34 (NTC, /10). Polling 1 s. Pubblica `sensors/lab/<sensore>` e `sensors/lab/ntc/temperature` (**senza retain**). Salva in `sensor_data.labsens_measurements`. |
+| `raspi-labsens.service` | `labsens-mqtt.js` | Modbus addr 29, registri 64–69 (temperature, humidity, pm10, pm2_5, voc, nox; fino al 03/10 tutti /100, poi con le scale corrette) + reg 34 (NTC, /10) + dal 03/10 reg 82 (CO2, vedi [PIANO-CO2.md](PIANO-CO2.md)). Polling 1 s. Pubblica `sensors/lab/<sensore>` e `sensors/lab/ntc/temperature` (**senza retain**). Salva in `sensor_data.labsens_measurements`. |
 | `raspi-battery.service` | `battery-mqtt.js` | Modbus addr 4. Registri 400–405: current/voltage setpoint, current/voltage measured (signed 16), run state (0 stopped, 1 charge, 2 discharge), battery type. Polling 1 s. Pubblica `sensors/battery/state` + topic singoli + `meta` (**retain**). Salva in `sensor_data.battery_measurements`. Esegue comandi da `sensors/battery/command/dispatch` e risponde su `command/ack`. |
 | `raspi-battery-cmd-bridge.service` | `battery-cmd-bridge.js` | Valida i comandi su `command/request` (solo "è intero", **nessun limite di range**) e li inoltra su `command/dispatch`. |
 
@@ -84,7 +84,7 @@ Rilevamento automatico porte seriali: `modbus-autodetect.js`.
 
 - ~86.400 righe/giorno per tabella (1 Hz) → l'agente **non** deve mai leggere dati grezzi.
 - Log journald molto verbosi (`[DEBUG]` a ogni ciclo) → l'agente non deve leggere i log grezzi.
-- `labsens` divide per 100 senza gestire il segno → temperature negative errate.
+- `labsens` divide per 100 senza gestire il segno → temperature negative errate. → corretto il 03/10 insieme alle scale del SEN55 (PM ÷10, VOC e NOx indici), vedi [PIANO-CO2.md](PIANO-CO2.md).
 - Topic lab senza retain; soglia "stale" della dashboard a 15 s con polling a 1 s.
 - Nessuna politica di retention sul DB (crescita illimitata). → risolto dalla pulizia notturna del supervisore (fase 5a); misura sul Pi del 01/10: circa 22 MB al giorno, 100 GB liberi.
 - `write_register` libero nel bridge: pericoloso se esposto a un agente.
@@ -99,7 +99,7 @@ Rilevamento automatico porte seriali: `modbus-autodetect.js`.
 | Autonomia sulla batteria | **L'agente può agire**. I limiti saranno definiti più avanti per ogni tipo di batteria; per ora il sistema deve solo **prevedere che i limiti esistano** (struttura profili). |
 | Dove gira l'agente | **Sul Raspberry Pi** |
 | Notifiche | **Telegram** |
-| Codice esistente | Non va modificato: tutto il nuovo software è **additivo** (nuovi file/servizi) |
+| Codice esistente | Non va modificato: tutto il nuovo software è **additivo** (nuovi file/servizi). Unica deroga (03/10): `labsens-mqtt.js`, per la CO2 e le scale del SEN55 |
 | Hardware | Raspberry Pi 4B, 4 GB RAM (serve OS a 64 bit per Claude Code) |
 | Pagamento agente | **Abbonamento Claude**: token di lunga durata (`claude setup-token`) in `CLAUDE_CODE_OAUTH_TOKEN`. La quota è condivisa con l'uso personale → budget espresso in **numero di esecuzioni/giorno**: 20 al giorno, di cui al massimo 10 con Sonnet (10 e 5 fino al 03/10) |
 | Modelli | **Haiku** per il triage degli eventi (con escalation); **Sonnet** per report, `/report`, `/ask`, decisioni e procedure batteria. Configurabili da file |
@@ -314,7 +314,7 @@ Ramo di lavoro: `feat/agente`. Test: `npm test` (`node:test`). Prova senza hardw
 
 ### Note di implementazione
 
-- **Bug del segno di `labsens`:** il codice esistente non si tocca; il supervisore reinterpreta i valori come interi con segno (valori ≥ 327,68 per le grandezze /100 → negativi). Il simulatore riproduce il bug di proposito.
+- **Bug del segno di `labsens`:** fino al 03/10 il supervisore reinterpretava le temperature come interi con segno; ora `labsens-mqtt.js` decodifica il segno da solo e la correzione del supervisore resta solo per sicurezza.
 - **Convenzione corrente (verificata sul banco il 02/10):** corrente misurata positiva in carica, negativa in scarica. Dal 03/10 il codice nuovo ne dipende: il registro 404 vale 1 anche in scarica e la direzione si ricava dal segno (`lib/run-state.js`).
 - **Supervisore:** documentazione operativa in [supervisore.md](supervisore.md). Lo stop dell'interblocco e di `/stop` va direttamente su `command/dispatch` (non dipende dal bridge). Lo stato è pubblicato su `supervisor/status` (retained) per il server MCP.
 - **Server MCP:** documentazione in [mcp.md](mcp.md). I comandi sono validati contro lo stato pubblicato dal supervisore (unica fonte del profilo attivo e del latch); i limiti dei comandi (`commandBounds`) sono quelli del profilo ristretti dei margini di `config/agent.json`, così un setpoint accettato non fa scattare l'interblocco. Il server è installato in `/opt/raspi-agent` come root: l'agente non può modificarlo.

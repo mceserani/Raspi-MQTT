@@ -2,7 +2,7 @@
 
 Livello deterministico tra i servizi esistenti e l'agente (vedi [PIANO-AGENTE.md](PIANO-AGENTE.md), §5.1). Non usa token: sorveglia MQTT, apre e chiude eventi, ferma la batteria se esce dai limiti del profilo, calcola i riassunti e parla con Telegram.
 
-I servizi esistenti non vengono modificati: il supervisore si limita a leggere i loro topic e a inviare lo stop sullo stesso canale dei comandi.
+Il supervisore non modifica i servizi esistenti: legge i loro topic e invia lo stop sullo stesso canale dei comandi. (Unica eccezione al principio, il 3 ottobre 2026: `labsens-mqtt.js` è stato modificato per leggere la CO2 e correggere le scale del SEN55, vedi [PIANO-CO2.md](PIANO-CO2.md).)
 
 ---
 

@@ -1,7 +1,7 @@
 # Piano: misura della CO2
 
 > Documento di lavoro per riprendere il progetto in sessioni successive.
-> Stato: **implementato sul PC (03/10), da installare sul Pi** (procedura in [installazione](installazione.md#aggiornamento-del-3-ottobre-2026-co2-e-scale-del-sen55)). Problema delle scale del SEN55 confermato sul Pi; lettura dei registri 80-82 da fare con `tools/read-labsens.js`.
+> Stato: **installato e verificato sul Pi (03/10)**; settimana di osservazione per tarare le soglie (§7).
 > Ultimo aggiornamento: 2026-10-03
 
 ---
@@ -108,3 +108,12 @@ Più le regole già usate per le altre grandezze: dati fermi, valori impossibili
 - Agente: sezione "Qualità dell'aria" in `CLAUDE.md` (lettura della CO2, indici VOC e NOx, valori vecchi prima del 3 ottobre).
 - Strumenti: `tools/read-labsens.js` (lettura una tantum dei registri), `tools/migrate-sen55-scale.js` (ricalcolo dello storico).
 - Simulatore con le scale corrette e un profilo di CO2 giorno e notte; test (129 verdi); documentazione (riferimento, installazione, supervisore, utilizzo).
+
+## 7. Verifica sul Pi (03/10) e prossimi passi
+
+- `tools/read-labsens.js`: SCD30 presente, CO2 497 ppm, umidità SCD30 50,7 %.
+- Migrazione: 314.522 righe grezze (id da 1 a 314.522), 24.760 riassunti al minuto e 416 orari (le 104 ore dall'installazione del supervisore). Dopo: PM2.5 medio 7,9 µg/m³, VOC 77, NOx 1, CO2 496 ppm; `/status` mostra la CO2.
+- Continuità: l'indice VOC ricalcolato fino alle 16:08 (233) prosegue senza salti in quello letto dal servizio nuovo dalle 16:14 (235): il fattore ×100 è esatto.
+- Primo fenomeno reso visibile dalla correzione: dalle 14:00 del 03/10, dopo una pulizia del locale, l'indice VOC è salito gradualmente da circa 90 a 235 (soglia di warning 250). Con la scala vecchia sarebbe risultato 2,35.
+
+Da osservare nella prossima settimana: avvisi CO2 utili o inutili, minimo notturno (atteso 420-450 ppm; se cresce di giorno in giorno è deriva), primi avvisi di PM, VOC e NOx con le soglie finalmente attive. Poi taratura di soglie, durate minime e isteresi.

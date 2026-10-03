@@ -164,7 +164,8 @@ SELECT MAX(recorded_at) FROM battery_measurements;
 
 | Area | Limitazione |
 |---|---|
-| Sensori di laboratorio | I registri 64–69 e 34 sono interpretati **senza segno**: una temperatura negativa inviata in complemento a due verrebbe letta come un valore molto alto (es. −1,00 °C → 655,35 °C). Il supervisore corregge le temperature prima di valutarle e di aggregarle; il database e i topic MQTT restano invariati. |
+| Sensori di laboratorio | Il sensore di CO2 (SCD30) non si può calibrare da software con i registri della scheda: in un locale chiuso può derivare. Verifica: a finestre aperte deve leggere circa 420 ppm. |
+| Controller batteria | Il registro dello stato (404) vale `1` anche in scarica: il codice nuovo ricava la direzione dal segno della corrente (`lib/run-state.js`), la tabella grezza registra il valore letto. |
 | Sensori di laboratorio | Il topic base `sensors/lab` è fisso nel codice di `labsens-mqtt.js` e `dashboard.js`. |
 | Sensori di laboratorio | I messaggi non sono `retain`: un client che si collega non riceve l'ultimo valore finché non arriva il ciclo successivo. |
 | Sensori di laboratorio | Il `timestamp` MQTT e `recorded_at` nel DB sono generati al momento della pubblicazione/inserimento, non della lettura Modbus (differenza di pochi millisecondi). |
