@@ -286,4 +286,4 @@ Messaggi che si ricevono:
 - ⚠️ / 🚨 dal supervisore: un evento warning / critical si apre; ✅ quando rientra; 🔺 se peggiora.
 - 🤖 dall'agente: report giornaliero (ogni giorno alle 18:00) e settimanale (venerdì alle 15:00), risposte a `/ask` e `/report`, valutazioni del triage (solo se aggiungono qualcosa agli allarmi), conclusioni delle indagini, notifiche dei comandi batteria dell'agente (eseguiti o rifiutati).
 
-L'agente ha un budget di esecuzioni al giorno (oggi 10, di cui 5 con Sonnet): `/status` mostra quante ne restano. Dettagli in [supervisore.md](supervisore.md) e [lanciatore.md](lanciatore.md).
+L'agente ha un budget di esecuzioni al giorno (oggi 20, di cui 10 con Sonnet): `/status` mostra quante ne restano. Dettagli in [supervisore.md](supervisore.md) e [lanciatore.md](lanciatore.md).

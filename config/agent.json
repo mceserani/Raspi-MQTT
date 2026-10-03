@@ -63,8 +63,8 @@
 
   "launcher": {
     "$comment": "Lanciatore dell'agente (fase 3a). Budget in esecuzioni al giorno (quota dell'abbonamento condivisa): un lavoro Sonnet oltre maxSonnetRunsPerDay passa a Haiku. Tipi di lavoro: modello, numero massimo di turni e strumenti MCP ammessi.",
-    "maxRunsPerDay": 10,
-    "maxSonnetRunsPerDay": 5,
+    "maxRunsPerDay": 20,
+    "maxSonnetRunsPerDay": 10,
     "maxQueue": 5,
     "timeoutSeconds": 300,
     "maxPromptChars": 2000,

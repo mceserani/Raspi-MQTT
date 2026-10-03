@@ -12,7 +12,7 @@ sudo systemctl restart raspi-supervisor
 
 Lo script aggiorna `/opt/raspi-agent` (lancia `setup-agent-mcp.sh`), controlla Claude Code e il token, installa e avvia il servizio. Poi da Telegram:
 
-- `/status` → deve comparire la riga `Agente: in attesa · oggi 0/10 esecuzioni (Sonnet 0/5)`;
+- `/status` → deve comparire la riga `Agente: in attesa · oggi 0/20 esecuzioni (Sonnet 0/10)`;
 - `/ask com'è andato il PM2.5 nelle ultime 6 ore?` → il bot conferma l'invio e dopo qualche decina di secondi arriva la risposta con il prefisso 🤖.
 
 Log: `journalctl --namespace=raspi-agent -u raspi-agent-launcher -f` (journal separato, vedi [supervisore.md](supervisore.md#log)).
@@ -60,7 +60,7 @@ Tipi di lavoro:
 | `procedure` | supervisore, a fine procedura batteria (`procedures.analyzeOnEnd`) | Sonnet | 1 | `get_procedures`, `get_battery_cycles`, lettura, note |
 | `test` | manuale | Haiku | 0 | `get_live_status` |
 
-La **riserva** è il numero di esecuzioni che un lavoro automatico deve lasciare libere: con 10 al giorno il triage si ferma a 7 usate, le indagini a 8 e i report programmati a 9, così resta sempre almeno un'esecuzione per `/ask` e `/report`. Nessun lavoro automatico può comandare la batteria: solo `/ask`, cioè una richiesta esplicita dell'utente, può avviare una procedura; l'indagine può solo fermarla. Per cambiare basta modificare gli strumenti del tipo di lavoro in `config/agent.json`.
+La **riserva** è il numero di esecuzioni che un lavoro automatico deve lasciare libere: con 20 al giorno il triage si ferma a 17 usate, le indagini a 18 e i report programmati a 19, così resta sempre almeno un'esecuzione per `/ask` e `/report`. Nessun lavoro automatico può comandare la batteria: solo `/ask`, cioè una richiesta esplicita dell'utente, può avviare una procedura; l'indagine può solo fermarla. Per cambiare basta modificare gli strumenti del tipo di lavoro in `config/agent.json`.
 
 Le istruzioni dell'agente sono in [`agent/workspace/CLAUDE.md`](../agent/workspace/CLAUDE.md), installato da `setup-agent-mcp.sh` in `~raspi-agent/workspace/CLAUDE.md` (proprietà di root: l'agente non può riscriverle). Claude Code lo carica a ogni esecuzione.
 

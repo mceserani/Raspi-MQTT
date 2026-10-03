@@ -14,7 +14,7 @@
 
 **Fase 2 verificata sul Pi (30/09):** `setup-agent-mcp.sh` installato, Claude (`claude -p` come `raspi-agent`) usa gli strumenti MCP, `get_summary`/`get_events`/`query_readonly` funzionano su MariaDB reale, `send_telegram` e un comando batteria con audit arrivano su Telegram.
 
-**Fase 3a verificata sul Pi (30/09):** lanciatore `raspi-agent-launcher` e `/ask` funzionano. Budget: **10 esecuzioni al giorno, di cui al massimo 5 con Sonnet**. Documentazione: [lanciatore.md](lanciatore.md).
+**Fase 3a verificata sul Pi (30/09):** lanciatore `raspi-agent-launcher` e `/ask` funzionano. Budget: **10 esecuzioni al giorno, di cui al massimo 5 con Sonnet**; dal 03/10 **20, di cui 10 con Sonnet**. Documentazione: [lanciatore.md](lanciatore.md).
 
 **Fase 3b verificata sul Pi (30/09):** `CLAUDE.md` dell'agente, triage automatico degli eventi (Haiku, a gruppi, al massimo uno ogni 60 min, 10 min con un critical), indagini con Sonnet su richiesta del triage (max 2 al giorno), riserva di budget per `/ask` (il triage lascia sempre 3 esecuzioni libere), `agent_status` aggiornato dal supervisore. Il triage funziona e il contatore delle esecuzioni sale. Il lanciatore legge `config/agent.json` solo all'avvio: dal 01/10 `./setup-agent-mcp.sh` lo riavvia da solo, dopo aver aspettato l'eventuale lavoro in corso.
 
@@ -101,7 +101,7 @@ Rilevamento automatico porte seriali: `modbus-autodetect.js`.
 | Notifiche | **Telegram** |
 | Codice esistente | Non va modificato: tutto il nuovo software è **additivo** (nuovi file/servizi) |
 | Hardware | Raspberry Pi 4B, 4 GB RAM (serve OS a 64 bit per Claude Code) |
-| Pagamento agente | **Abbonamento Claude**: token di lunga durata (`claude setup-token`) in `CLAUDE_CODE_OAUTH_TOKEN`. La quota è condivisa con l'uso personale → budget espresso in **numero di esecuzioni/giorno**: 10 al giorno, di cui al massimo 5 con Sonnet |
+| Pagamento agente | **Abbonamento Claude**: token di lunga durata (`claude setup-token`) in `CLAUDE_CODE_OAUTH_TOKEN`. La quota è condivisa con l'uso personale → budget espresso in **numero di esecuzioni/giorno**: 20 al giorno, di cui al massimo 10 con Sonnet (10 e 5 fino al 03/10) |
 | Modelli | **Haiku** per il triage degli eventi (con escalation); **Sonnet** per report, `/report`, `/ask`, decisioni e procedure batteria. Configurabili da file |
 | Selezione profilo batteria | Supportate entrambe: registro 405 (`batteryTypeCodes`) e dichiarazione manuale, che ha la precedenza |
 | Credenziali Telegram | Solo il supervisore conosce il token del bot; l'agente invia messaggi passando dal supervisore |
