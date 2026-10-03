@@ -37,3 +37,6 @@ coverage/
 # Cache
 .npm
 .cache
+
+# Documentazione delle schede ScuoleLabs (manuali, eseguibili, librerie LabVIEW): solo locale
+scuole_labs_docs/
