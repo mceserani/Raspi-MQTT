@@ -10,10 +10,11 @@ const BASE_TOPIC = 'sensors/lab/#';
 const SENSOR_DEFS = [
   { key: 'temperature',     label: 'Temperature',     unit: '°C',     min: -10,  max: 60,   decimals: 2 },
   { key: 'humidity',        label: 'Humidity',        unit: '%',      min: 0,    max: 100,  decimals: 2 },
-  { key: 'pm10',            label: 'PM10',            unit: 'µg/m³',  min: 0,    max: 500,  decimals: 2 },
-  { key: 'pm2_5',           label: 'PM2.5',           unit: 'µg/m³',  min: 0,    max: 300,  decimals: 2 },
-  { key: 'voc',             label: 'VOC',             unit: 'ppb',    min: 0,    max: 1000, decimals: 2 },
-  { key: 'nox',             label: 'NOx',             unit: 'ppb',    min: 0,    max: 1000, decimals: 2 },
+  { key: 'co2',             label: 'CO2',             unit: 'ppm',    min: 400,  max: 5000, decimals: 0 },
+  { key: 'pm10',            label: 'PM10',            unit: 'µg/m³',  min: 0,    max: 500,  decimals: 1 },
+  { key: 'pm2_5',           label: 'PM2.5',           unit: 'µg/m³',  min: 0,    max: 300,  decimals: 1 },
+  { key: 'voc',             label: 'VOC',             unit: 'index',  min: 0,    max: 500,  decimals: 0 },
+  { key: 'nox',             label: 'NOx',             unit: 'index',  min: 0,    max: 500,  decimals: 0 },
   { key: 'ntc/temperature', label: 'NTC Temp',        unit: '°C',     min: -10,  max: 60,   decimals: 1 },
 ];
 

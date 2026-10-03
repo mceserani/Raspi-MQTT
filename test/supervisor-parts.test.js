@@ -101,6 +101,19 @@ test('EventManager: open, escalate, resolve, one-shot', () => {
 
 	assert.deepEqual(store.ops, [['insert', 'k'], ['update', 'k', 'critical'], ['update', 'k', 'warning'], ['resolve', 'k'], ['insert', 'k']]);
 	assert.deepEqual(notified.map(([kind]) => kind), ['open', 'escalated', 'resolved', 'oneshot']);
+
+	// Thresholds with several steps: a higher step of the same severity is notified too
+	const steps = fakeStore();
+	const stepNotified = [];
+	const stepped = new EventManager({ store: steps, notifier: { notify: (e, kind) => stepNotified.push([kind, e.message]) } });
+	const s = (severity, step, limit) => ({ key: 'co2', source: 'lab', type: 'threshold', severity, step, message: `soglia ${limit}`, details: {} });
+	stepped.sync([s('info', 0, 1000)], 1);
+	stepped.sync([s('warning', 1, 1500)], 2);
+	stepped.sync([s('warning', 2, 2000)], 3);
+	stepped.sync([s('warning', 2, 2000)], 4);
+	stepped.sync([s('warning', 1, 1500)], 5);
+	assert.deepEqual(stepNotified, [['open', 'soglia 1000'], ['escalated', 'soglia 1500'], ['escalated', 'soglia 2000']]);
+	assert.deepEqual(steps.ops, [['insert', 'co2'], ['update', 'co2', 'warning'], ['update', 'co2', 'warning']]);
 });
 
 // ─── telegram ──────────────────────────────────────────────────────────────

@@ -149,6 +149,9 @@ function hourRow(i, avg, samples = 3600) {
 test('summarizeMetric: weighted mean, coverage, change, peak hour, reference', () => {
 	const rows = Array.from({ length: 24 }, (_, i) => hourRow(i, i === 14 ? 40 : 10));
 	rows[3] = hourRow(3, null, 0);
+	const hourly = summarizeMetric(rows.map((row, k) => ({ ...row, avg: 900 + k * 100 })), { fromMs: FROM, toMs: TO, reference: { value: 1000, window: 'hour', basis: 'CO2' } });
+	assert.equal(hourly.reference.hoursAbove, rows.filter((row, k) => row.samples > 0 && 900 + k * 100 > 1000).length);
+	assert.equal(hourly.reference.hours, rows.filter((row) => row.samples > 0).length);
 	const stats = summarizeMetric(rows, { fromMs: FROM, toMs: TO, previousAvg: 8, reference: { value: 15, basis: 'OMS' } });
 	const expectedAvg = (22 * 10 + 40) / 23;
 	assert.equal(stats.avg, Math.round(expectedAvg * 100) / 100);

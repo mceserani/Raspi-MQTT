@@ -25,13 +25,19 @@ export class EventManager {
 				continue;
 			}
 
-			const escalated = SEVERITY_RANK[condition.severity] > SEVERITY_RANK[event.severity];
+			// A higher step of the same severity (thresholds with several steps) is
+			// notified like an escalation
+			const higherStep = condition.severity === event.severity && (condition.step ?? 0) > (event.step ?? 0);
+			const escalated = SEVERITY_RANK[condition.severity] > SEVERITY_RANK[event.severity] || higherStep;
 			const changed = condition.severity !== event.severity;
 			event.message = condition.message;
 			event.details = condition.details;
+			event.step = condition.step;
 			if (changed) {
 				event.severity = condition.severity;
 				if (escalated) event.peakSeverity = condition.severity;
+			}
+			if (changed || higherStep) {
 				this.store.update(event, now);
 				if (escalated) this.notifier.notify(event, 'escalated');
 			}

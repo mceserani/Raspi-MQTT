@@ -4,10 +4,21 @@ import mqtt from 'mqtt';
 import { BatteryModel, LabModel, labsensEncode } from '../tools/simulator.js';
 import { startDevBroker } from '../tools/dev-broker.js';
 
-test('labsensEncode reproduces the unsigned-register sign bug', () => {
-	assert.equal(labsensEncode(21.5, 100), 21.5);
-	assert.equal(labsensEncode(-1.5, 100), 653.86);
-	assert.equal(labsensEncode(-0.5, 10), 6553.1);
+test('labsensEncode: register scale and sign like labsens-mqtt.js', () => {
+	assert.equal(labsensEncode(21.537, 100, true), 21.54);
+	assert.equal(labsensEncode(-1.5, 100, true), -1.5);
+	assert.equal(labsensEncode(-0.5, 10, true), -0.5);
+	assert.equal(labsensEncode(7.26, 10), 7.3, 'PM: one decimal');
+	assert.equal(labsensEncode(101.4, 1), 101, 'VOC index: integer');
+});
+
+test('CO2: higher in the working day than at night', () => {
+	const lab = new LabModel();
+	const night = lab.read(new Date(2026, 9, 5, 3, 0)).co2;
+	const day = lab.read(new Date(2026, 9, 5, 13, 0)).co2;
+	assert.ok(night > 400 && night < 500, night);
+	assert.ok(day > 850 && day < 950, day);
+	assert.equal(Number.isInteger(day), true);
 });
 
 test('lab overrides are published as-is', () => {

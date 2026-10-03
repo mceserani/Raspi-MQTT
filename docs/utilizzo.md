@@ -28,10 +28,11 @@ Esempio di schermata:
 ───────────────────────────────────────────────────────────────────────────
   Temperature                23.41  °C      ███████░░░░░░░░░░░░░  14:32:05
   Humidity                   45.20  %       █████████░░░░░░░░░░░  14:32:05
-  PM10                       12.00  µg/m³   ░░░░░░░░░░░░░░░░░░░░  14:32:05
-  PM2.5                       8.00  µg/m³   █░░░░░░░░░░░░░░░░░░░  14:32:05
-  VOC                       102.00  ppb     ██░░░░░░░░░░░░░░░░░░  14:32:05
-  NOx                         1.00  ppb     ░░░░░░░░░░░░░░░░░░░░  14:32:05
+  CO2                          712  ppm     ██░░░░░░░░░░░░░░░░░░  14:32:05
+  PM10                        12.0  µg/m³   ░░░░░░░░░░░░░░░░░░░░  14:32:05
+  PM2.5                        8.0  µg/m³   █░░░░░░░░░░░░░░░░░░░  14:32:05
+  VOC                          102  index   ████░░░░░░░░░░░░░░░░  14:32:05
+  NOx                            1  index   ░░░░░░░░░░░░░░░░░░░░  14:32:05
   NTC Temp                    23.8  °C      ███████░░░░░░░░░░░░░  14:32:05
 ───────────────────────────────────────────────────────────────────────────
   Press Ctrl+C to exit
@@ -48,8 +49,9 @@ Come leggerla:
   | Temperature, NTC Temp | −10 … 60 °C |
   | Humidity | 0 … 100 % |
   | PM10 | 0 … 500 µg/m³ |
+  | CO2 | 400 … 5000 ppm |
   | PM2.5 | 0 … 300 µg/m³ |
-  | VOC, NOx | 0 … 1000 ppb |
+  | VOC, NOx | 0 … 500 (indici Sensirion: VOC 100 = media delle ultime 24 h, NOx 1 = aria normale) |
 
   Colore: **verde** sotto il 50 % della scala, **giallo** fra 50 % e 80 %, **rosso** oltre l'80 %. La barra è un'indicazione visiva e non corrisponde a soglie di allarme normative.
 - **waiting for data…**: nessun valore ancora ricevuto per quella grandezza (i messaggi dei sensori di laboratorio non sono conservati dal broker, quindi i valori compaiono al primo ciclo di polling dopo la connessione).

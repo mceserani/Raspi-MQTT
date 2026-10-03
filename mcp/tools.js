@@ -10,7 +10,7 @@ import { AGENT_COMMANDS, commandBounds, statusAgeSeconds, validateBatteryCommand
 export class ToolError extends Error {}
 
 export const METRICS = {
-	lab: ['temperature', 'humidity', 'pm2_5', 'pm10', 'voc', 'nox', 'ntc_temperature'],
+	lab: ['temperature', 'humidity', 'co2', 'pm2_5', 'pm10', 'voc', 'nox', 'ntc_temperature'],
 	battery: ['voltage_measured_mv', 'current_measured_ma']
 };
 

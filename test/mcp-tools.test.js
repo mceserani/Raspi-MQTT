@@ -122,7 +122,7 @@ test('get_summary: auto granularity, metric check, point cap', async () => {
 
 	await tools.get_summary({ from: '-7d', metrics: ['pm2_5'] });
 	assert.match(db.calls[1].sql, /FROM summary_hour .*GROUP BY DATE/s);
-	await assert.rejects(tools.get_summary({ metrics: ['co2'] }), /sconosciute/);
+	await assert.rejects(tools.get_summary({ metrics: ['ozone'] }), /sconosciute/);
 	await assert.rejects(tools.get_summary({ from: '-2d', granularity: 'minute' }), /troppi punti/);
 });
 

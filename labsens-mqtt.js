@@ -55,19 +55,31 @@ const CONFIG = {
   pollInterval: parseNumber(process.env.LABSENS_POLL_INTERVAL, 1000)
 };
 
-// Sensor data mapping
+// Sensor data mapping. Scales and signs from the board register map
+// (Registri schede.xlsx, LabSensors): until 2026-10-03 every SEN55 register was
+// divided by 100, so PM came out 10 times and VOC/NOx 100 times too low
+// (tools/migrate-sen55-scale.js fixes the stored history).
 const SENSORS = [
-  { register: 64, name: 'temperature', unit: '°C', topic: 'temperature' },
-  { register: 65, name: 'humidity', unit: '%', topic: 'humidity' },
-  { register: 66, name: 'pm10', unit: 'µg/m³', topic: 'pm10' },
-  { register: 67, name: 'pm2_5', unit: 'µg/m³', topic: 'pm2_5' },
-  { register: 68, name: 'voc', unit: 'ppb', topic: 'voc' },
-  { register: 69, name: 'nox', unit: 'ppb', topic: 'nox' }
+  { register: 64, name: 'temperature', unit: '°C', topic: 'temperature', scale: 100, signed: true },
+  { register: 65, name: 'humidity', unit: '%', topic: 'humidity', scale: 100 },
+  { register: 66, name: 'pm10', unit: 'µg/m³', topic: 'pm10', scale: 10 },
+  { register: 67, name: 'pm2_5', unit: 'µg/m³', topic: 'pm2_5', scale: 10 },
+  { register: 68, name: 'voc', unit: 'index', topic: 'voc', scale: 1 },
+  { register: 69, name: 'nox', unit: 'index', topic: 'nox', scale: 1 }
 ];
 
 const NTC_SENSORS = [
-  { register: 34, name: 'ntc_temperature', unit: '°C', topic: 'temperature' }
+  { register: 34, name: 'ntc_temperature', unit: '°C', topic: 'temperature', scale: 10, signed: true }
 ];
+
+// SCD30 on the same board: CO2 in ppm. It reads 0 until the first measurement
+// (about 20 s after power-up): 0 is stored as NULL and not published.
+const CO2_SENSOR = { register: 82, name: 'co2', unit: 'ppm', topic: 'co2', scale: 1 };
+
+function decodeRegister(raw, { scale, signed = false }) {
+  const value = signed && raw >= 0x8000 ? raw - 0x10000 : raw;
+  return value / scale;
+}
 
 // Main bridge class
 // This class encapsulates all functionality for connecting to Modbus, MQTT, and MariaDB,
@@ -145,10 +157,13 @@ class LabSensorsBridge {
         voc DOUBLE,
         nox DOUBLE,
         ntc_temperature DOUBLE,
+        co2 DOUBLE,
         PRIMARY KEY (id),
         INDEX idx_recorded_at (recorded_at)
       )
     `);
+    // Tables created before the CO2 reading (instant in MariaDB: column at the end)
+    await this.dbPool.query(`ALTER TABLE ${this.config.mariadb.table} ADD COLUMN IF NOT EXISTS co2 DOUBLE`);
   }
 
   async connect() {
@@ -233,8 +248,7 @@ class LabSensorsBridge {
 
       const sensorValues = {};
       SENSORS.forEach((sensor, index) => {
-        // Assuming values are stored as integers or need conversion
-        sensorValues[sensor.name] = registers[index] / 100; // Divide by 100 for decimal values
+        sensorValues[sensor.name] = decodeRegister(registers[index], sensor);
       });
 
       console.log('[DEBUG] Parsed sensor values:', sensorValues);
@@ -261,7 +275,7 @@ class LabSensorsBridge {
       console.log('[DEBUG] Raw NTC registers:', registers);
 
       const ntcValues = {
-        ntc_temperature: registers[0] / 10
+        ntc_temperature: decodeRegister(registers[0], NTC_SENSORS[0])
       };
       console.log('[DEBUG] Parsed NTC values:', ntcValues);
       return ntcValues;
@@ -269,6 +283,27 @@ class LabSensorsBridge {
       console.error('[ERROR] Failed to read NTC Modbus registers:', error.message);
       console.error('[DEBUG] Stack:', error.stack);
       return null;
+    }
+  }
+
+  // A failed CO2 read does not stop the other measurements: co2 is null
+  async readCo2Data() {
+    try {
+      console.log(`[DEBUG] Attempting to read Modbus register ${CO2_SENSOR.register} (CO2)...`);
+      const readPromise = this.readRegistersWithFallback(CO2_SENSOR.register, 1, `CO2 block ${CO2_SENSOR.register}`);
+      const response = await Promise.race([
+        readPromise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Modbus CO2 read timeout after ${this.readTimeout}ms`)), this.readTimeout)
+        )
+      ]);
+
+      const raw = response.data[0];
+      console.log('[DEBUG] Raw CO2 register:', raw);
+      return { co2: raw === 0 ? null : decodeRegister(raw, CO2_SENSOR) };
+    } catch (error) {
+      console.error('[ERROR] Failed to read CO2 Modbus register:', error.message);
+      return { co2: null };
     }
   }
 
@@ -337,12 +372,31 @@ class LabSensorsBridge {
     }
   }
 
-  async saveToMariaDB(sensorValues, ntcValues) {
+  async publishCo2ToMQTT(co2Values) {
+    const value = co2Values.co2;
+    if (value === null) {
+      return;
+    }
+
+    try {
+      await this.mqttClient.publish(`${this.config.mqtt.baseTopic}/${CO2_SENSOR.topic}`, JSON.stringify({
+        value: value,
+        unit: CO2_SENSOR.unit,
+        timestamp: new Date().toISOString(),
+        sensor: CO2_SENSOR.name
+      }));
+      console.log(`[MQTT] Published ${CO2_SENSOR.name}: ${value} ${CO2_SENSOR.unit}`);
+    } catch (error) {
+      console.error('[ERROR] Failed to publish CO2 to MQTT:', error.message);
+    }
+  }
+
+  async saveToMariaDB(sensorValues, ntcValues, co2Values) {
     try {
       const insertSql = `
         INSERT INTO ${this.config.mariadb.table}
-        (recorded_at, temperature, humidity, pm10, pm2_5, voc, nox, ntc_temperature)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (recorded_at, temperature, humidity, pm10, pm2_5, voc, nox, ntc_temperature, co2)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       await this.dbPool.query(insertSql, [
         new Date(),
@@ -352,7 +406,8 @@ class LabSensorsBridge {
         sensorValues.pm2_5,
         sensorValues.voc,
         sensorValues.nox,
-        ntcValues.ntc_temperature
+        ntcValues.ntc_temperature,
+        co2Values.co2
       ]);
       console.log(`[MariaDB] Saved row in ${this.config.mariadb.table}`);
     } catch (error) {
@@ -387,6 +442,7 @@ class LabSensorsBridge {
       // Modbus client should be used sequentially to avoid request collisions.
       const sensorValues = await this.readSensorData();
       const ntcValues = await this.readNtcData();
+      const co2Values = await this.readCo2Data();
 
       if (!sensorValues || !ntcValues) {
         console.log('[POLL] Skipping update due to read error (will retry next tick)');
@@ -396,13 +452,14 @@ class LabSensorsBridge {
 
       this.consecutiveFailures = 0;
 
-      console.log('[DATA]', { ...sensorValues, ...ntcValues });
+      console.log('[DATA]', { ...sensorValues, ...ntcValues, ...co2Values });
 
       // Publish and persistence can remain parallel.
       await Promise.all([
         this.publishToMQTT(sensorValues),
         this.publishNtcToMQTT(ntcValues),
-        this.saveToMariaDB(sensorValues, ntcValues)
+        this.publishCo2ToMQTT(co2Values),
+        this.saveToMariaDB(sensorValues, ntcValues, co2Values)
       ]);
     } catch (error) {
       console.error('[ERROR] Poll cycle failed:', error.message);

@@ -12,8 +12,8 @@ export const BOT_COMMANDS = [
 	{ command: 'help', description: 'Elenco dei comandi' }
 ];
 
-const LAB_ORDER = ['temperature', 'humidity', 'pm2_5', 'pm10', 'voc', 'nox', 'ntc_temperature'];
-const SHORT_LABELS = { temperature: 'T', humidity: 'UR', pm2_5: 'PM2.5', pm10: 'PM10', voc: 'VOC', nox: 'NOx', ntc_temperature: 'NTC' };
+const LAB_ORDER = ['temperature', 'humidity', 'co2', 'pm2_5', 'pm10', 'voc', 'nox', 'ntc_temperature'];
+const SHORT_LABELS = { temperature: 'T', humidity: 'UR', co2: 'CO2', pm2_5: 'PM2.5', pm10: 'PM10', voc: 'VOC', nox: 'NOx', ntc_temperature: 'NTC' };
 
 function formatDuration(seconds) {
 	const s = Math.max(0, Math.round(seconds));

@@ -69,8 +69,18 @@ export function summarizeMetric(rows, { fromMs, toMs, previousAvg = null, refere
 		result.lowHour = { at: `${pad(means.at(-1).hour)}:00`, avg: roundValue(means.at(-1).avg) };
 	}
 
-	// Reference values are 24 h means: compared on consecutive 24 h windows
-	if (reference) {
+	// Hourly reference (CO2): hours whose mean is above the value
+	if (reference?.window === 'hour') {
+		const hourAvgs = withData.map((row) => row.avg).filter((v) => v !== null);
+		result.reference = {
+			value: reference.value,
+			basis: reference.basis,
+			hours: hourAvgs.length,
+			hoursAbove: hourAvgs.filter((v) => v > reference.value).length,
+			maxHourAvg: hourAvgs.length ? roundValue(Math.max(...hourAvgs)) : null
+		};
+	} else if (reference) {
+		// Reference values are 24 h means: compared on consecutive 24 h windows
 		const windows = Math.max(1, Math.floor((toMs - fromMs) / DAY_MS));
 		const windowAvgs = [];
 		for (let i = 0; i < windows; i++) {
@@ -156,7 +166,8 @@ export async function buildReportData({ db, fromMs, toMs, references = {}, batte
 	const from = new Date(fromMs);
 	const to = new Date(toMs);
 	const previousFrom = new Date(fromMs - (toMs - fromMs));
-	const hourRows = Math.ceil((toMs - fromMs) / HOUR_MS) * 9 + 1;
+	// One row per hour and metric: 8 lab metrics (METRICS in tools.js) + 2 battery
+	const hourRows = Math.ceil((toMs - fromMs) / HOUR_MS) * 10 + 1;
 
 	// Sequential: the read-only pool has two connections and the Pi is small
 	const hourly = await db.query(
@@ -235,7 +246,7 @@ export async function buildReportData({ db, fromMs, toMs, references = {}, batte
 			hours: Math.round((toMs - fromMs) / HOUR_MS),
 			comparedWith: `${formatLocal(previousFrom, { seconds: false })} → ${formatLocal(fromMs, { seconds: false })}`
 		},
-		legend: 'avg/min/max/p95 sul periodo; coveragePct = campioni ricevuti rispetto a 1/s; previousAvg e changePct = periodo precedente di pari durata; peakHour/lowHour = ora del giorno con media più alta/bassa; reference = media su finestre di 24 h confrontata con il valore guida; chargeMahEstimate = somma della corrente misurata (1 campione/s).',
+		legend: 'avg/min/max/p95 sul periodo; coveragePct = campioni ricevuti rispetto a 1/s; previousAvg e changePct = periodo precedente di pari durata; peakHour/lowHour = ora del giorno con media più alta/bassa; reference = media su finestre di 24 h confrontata con il valore guida (per co2: ore con media oraria sopra il valore, hoursAbove); chargeMahEstimate = somma della corrente misurata (1 campione/s).',
 		lab,
 		battery: { ...battery, activity: batteryActivity },
 		events: summarizeEvents(events, agent, { maxGroups }),

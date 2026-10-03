@@ -1,12 +1,13 @@
-// labsens-mqtt.js divides unsigned registers, so negative temperatures come out
-// as ~655 °C (/100) or ~6553 °C (/10). Only the temperatures can be negative:
-// the other quantities are left untouched (PM can legitimately exceed 327).
+// Until 2026-10-03 labsens-mqtt.js divided unsigned registers, so negative
+// temperatures came out as ~655 °C (/100) or ~6553 °C (/10). It now decodes the
+// sign itself; this stays for safety (a real temperature above 327 °C is not
+// plausible). Only the temperatures can be negative.
 const SIGNED_LAB_FIELDS = {
 	temperature: 100,
 	ntc_temperature: 10
 };
 
-export const LAB_METRICS = ['temperature', 'humidity', 'pm10', 'pm2_5', 'voc', 'nox', 'ntc_temperature'];
+export const LAB_METRICS = ['temperature', 'humidity', 'pm10', 'pm2_5', 'voc', 'nox', 'ntc_temperature', 'co2'];
 
 export function decodeLabValue(sensor, value) {
 	const divisor = SIGNED_LAB_FIELDS[sensor];

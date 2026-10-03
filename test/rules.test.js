@@ -13,7 +13,7 @@ function keys(result) {
 
 // Feeds every lab sensor with a normal value, one sample per second
 function feedLab(engine, from, to, overrides = {}) {
-	const normal = { temperature: 22, humidity: 45, pm2_5: 7, pm10: 12, voc: 100, nox: 1, ntc_temperature: 22.5 };
+	const normal = { temperature: 22, humidity: 45, pm2_5: 7, pm10: 12, voc: 100, nox: 1, ntc_temperature: 22.5, co2: 600 };
 	for (let t = from; t <= to; t += 1000) {
 		for (const [sensor, value] of Object.entries({ ...normal, ...overrides })) {
 			engine.onLab(sensor, value, t);
@@ -98,6 +98,35 @@ test('never-received battery data becomes stale after the grace period', () => {
 	engine.evaluate(T0);
 	assert.ok(!keys(engine.evaluate(T0 + 5000)).includes('battery:stale'));
 	assert.ok(keys(engine.evaluate(T0 + (config.battery.staleSeconds + 1) * 1000)).includes('battery:stale'));
+});
+
+test('CO2: info, two warning steps, critical, after the sustain', () => {
+	const engine = new RuleEngine(config, { profileProvider: usable });
+	engine.evaluate(T0);
+	const sustain = config.lab.sensors.co2.sustain * 1000;
+	const co2At = (from, to, co2) => {
+		let result;
+		for (let t = from; t <= to; t += 1000) {
+			feedLab(engine, t, t, { co2 });
+			result = engine.evaluate(t);
+		}
+		return result.conditions.find((c) => c.key === 'lab:threshold:co2:high');
+	};
+	assert.equal(co2At(T0, T0 + sustain - 120_000, 1100), undefined, 'not before the sustain');
+	let condition = co2At(T0 + sustain - 119_000, T0 + sustain + 60_000, 1100);
+	assert.deepEqual([condition.severity, condition.step, condition.details.limit], ['info', 0, 1000]);
+	// The 60 s window mean follows the new value
+	condition = co2At(T0 + sustain + 61_000, T0 + sustain + 200_000, 1600);
+	assert.deepEqual([condition.severity, condition.step, condition.details.limit], ['warning', 1, 1500]);
+	condition = co2At(T0 + sustain + 201_000, T0 + sustain + 300_000, 2100);
+	assert.deepEqual([condition.severity, condition.step], ['warning', 2]);
+	assert.match(condition.message, /^CO2 alta: 2100 ppm \(soglia 2000\)$/);
+	// Hysteresis: 1970 ppm keeps the 2000 step (margin 50)
+	condition = co2At(T0 + sustain + 301_000, T0 + sustain + 400_000, 1970);
+	assert.equal(condition.step, 2);
+	condition = co2At(T0 + sustain + 401_000, T0 + sustain + 500_000, 5200);
+	assert.deepEqual([condition.severity, condition.step], ['critical', 3]);
+	assert.equal(co2At(T0 + sustain + 501_000, T0 + sustain + 600_000, 600), undefined);
 });
 
 test('implausible reading and rate of change', () => {

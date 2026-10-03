@@ -26,7 +26,7 @@ const readOnly = { readOnlyHint: true, openWorldHint: false };
 
 const DEFINITIONS = {
 	get_live_status: {
-		description: 'Valori attuali di laboratorio e batteria, profilo batteria attivo con limiti e commandBounds (limiti effettivi dei comandi), stato dell\'interblocco, eventi aperti. Unità: temperature °C, humidity %, pm µg/m³, voc/nox ppb; batteria mV e mA. ageS = età del dato in secondi.',
+		description: 'Valori attuali di laboratorio e batteria, profilo batteria attivo con limiti e commandBounds (limiti effettivi dei comandi), stato dell\'interblocco, eventi aperti. Unità: temperature °C, humidity %, co2 ppm, pm µg/m³, voc/nox indice Sensirion 0-500 (100 = media delle ultime 24 h per i VOC, 1 = aria normale per i NOx); batteria mV e mA. ageS = età del dato in secondi.',
 		inputSchema: {},
 		annotations: readOnly
 	},

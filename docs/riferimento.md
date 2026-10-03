@@ -73,9 +73,12 @@ Ogni grandezza è pubblicata su un topic separato con payload:
 | `sensors/lab/humidity` | `humidity` | `%` |
 | `sensors/lab/pm10` | `pm10` | `µg/m³` |
 | `sensors/lab/pm2_5` | `pm2_5` | `µg/m³` |
-| `sensors/lab/voc` | `voc` | `ppb` |
-| `sensors/lab/nox` | `nox` | `ppb` |
+| `sensors/lab/voc` | `voc` | `index` |
+| `sensors/lab/nox` | `nox` | `index` |
+| `sensors/lab/co2` | `co2` | `ppm` |
 | `sensors/lab/ntc/temperature` | `ntc_temperature` | `°C` |
+
+`co2` non viene pubblicato finché il sensore non ha la prima misura (registro a 0, circa 20 s dopo l'accensione) o se la lettura non riesce; le altre grandezze vengono pubblicate comunque.
 
 ### Batteria — telemetria
 
@@ -263,17 +266,22 @@ Protocollo: **Modbus RTU** su RS-485. Letture con funzione **03** (Read Holding 
 
 ### Scheda sensori (indirizzo 29)
 
-| Registro | Grandezza | Conversione | Unità |
-|---|---|---|---|
-| 34 | Temperatura NTC | grezzo ÷ 10 | °C |
-| 64 | Temperatura | grezzo ÷ 100 | °C |
-| 65 | Umidità relativa | grezzo ÷ 100 | % |
-| 66 | PM10 | grezzo ÷ 100 | µg/m³ |
-| 67 | PM2.5 | grezzo ÷ 100 | µg/m³ |
-| 68 | VOC | grezzo ÷ 100 | ppb |
-| 69 | NOx | grezzo ÷ 100 | ppb |
+Formati dal foglio dei registri della scheda (LabSensors) e dalla dispensa Sensirion.
 
-Lettura per ciclo: una richiesta per 64–69 (6 registri) e una per 34 (1 registro). Il registro 64 è usato come sonda dall'autodetect.
+| Registro | Sensore | Grandezza | Formato | Conversione | Unità |
+|---|---|---|---|---|---|
+| 34 | NTC1 | Temperatura | Int16 ×10 | con segno ÷ 10 | °C |
+| 64 | SEN55 | Temperatura | Int16 ×100 | con segno ÷ 100 | °C |
+| 65 | SEN55 | Umidità relativa | Uint16 ×100 | ÷ 100 | % |
+| 66 | SEN55 | PM10 | Uint16 ×10 | ÷ 10 | µg/m³ |
+| 67 | SEN55 | PM2.5 | Uint16 ×10 | ÷ 10 | µg/m³ |
+| 68 | SEN55 | VOC | Uint16 ×1 | nessuna | indice 0-500 (100 = media delle ultime 24 h) |
+| 69 | SEN55 | NOx | Uint16 ×1 | nessuna | indice 0-500 (1 = aria normale) |
+| 82 | SCD30 | CO2 | Uint16 ×1 | nessuna (0 = nessuna misura ancora) | ppm |
+
+Fino al 3 ottobre 2026 `labsens-mqtt.js` divideva per 100 tutti i registri 64-69, senza segno: PM10 e PM2.5 risultavano 10 volte più bassi, VOC e NOx 100 volte. Lo storico si corregge con `tools/migrate-sen55-scale.js` (vedi [installazione](installazione.md)).
+
+Lettura per ciclo: una richiesta per 64-69 (6 registri), una per 34 e una per 82 (1 registro ciascuna). Il registro 64 è usato come sonda dall'autodetect. La scheda ha anche altri sensori (SCD30 temperatura e umidità ai registri 80-81, luminosità, pressione, accelerometro, ingressi analogici, anemometro), non letti. `tools/read-labsens.js` legge una volta i registri principali, a servizio fermo, per verificarli.
 
 ### Controller batteria (indirizzo 4)
 
@@ -315,6 +323,7 @@ CREATE TABLE IF NOT EXISTS labsens_measurements (
   voc DOUBLE,
   nox DOUBLE,
   ntc_temperature DOUBLE,
+  co2 DOUBLE,
   PRIMARY KEY (id),
   INDEX idx_recorded_at (recorded_at)
 );
@@ -326,6 +335,7 @@ CREATE TABLE IF NOT EXISTS labsens_measurements (
 | `recorded_at` | Istante dell'inserimento, con millisecondi |
 | `temperature` … `nox` | Valori convertiti (stesse unità dei topic MQTT) |
 | `ntc_temperature` | Temperatura NTC, °C |
+| `co2` | CO2, ppm (NULL se il sensore non ha ancora una misura o la lettura non è riuscita). Aggiunta all'avvio di `labsens-mqtt.js` alle tabelle già esistenti |
 
 ### Tabella `battery_measurements`
 

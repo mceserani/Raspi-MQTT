@@ -368,4 +368,21 @@ sudo systemctl restart raspi-supervisor
 
 Solo i profili batteria sono cambiati: basta `sudo systemctl reload raspi-supervisor`.
 
-Le tabelle esistenti non vengono modificate: `CREATE TABLE IF NOT EXISTS` non altera lo schema di una tabella già presente. Se una nuova versione aggiunge colonne, lo schema va aggiornato manualmente con `ALTER TABLE`.
+Le tabelle esistenti non vengono modificate: `CREATE TABLE IF NOT EXISTS` non altera lo schema di una tabella già presente. Se una nuova versione aggiunge colonne, lo schema va aggiornato manualmente con `ALTER TABLE`. Eccezione: la colonna `co2` di `labsens_measurements` viene aggiunta da `labsens-mqtt.js` all'avvio.
+
+### Aggiornamento del 3 ottobre 2026: CO2 e scale del SEN55
+
+Questa versione di `labsens-mqtt.js` legge la CO2 e corregge le scale del SEN55 (PM ×10, VOC e NOx ×100, vedi [riferimento](riferimento.md#scheda-sensori-indirizzo-29)). Lo storico va corretto **una volta**, prima di avviare il servizio nuovo, e il supervisore deve partire dopo `labsens-mqtt.js` (legge la colonna `co2`):
+
+```bash
+cd ~/Raspi-MQTT && git pull
+sudo systemctl stop raspi-supervisor raspi-labsens
+node --env-file=.env tools/read-labsens.js 3              # facoltativo: verifica dei registri, CO2 compresa
+node --env-file=.env tools/migrate-sen55-scale.js         # conta le righe, non modifica nulla
+node --env-file=.env tools/migrate-sen55-scale.js --yes   # corregge righe grezze e riassunti
+sudo systemctl start raspi-labsens
+sudo systemctl start raspi-supervisor
+./setup-agent-mcp.sh
+```
+
+Lo strumento rifiuta di partire se `labsens-mqtt.js` sta ancora scrivendo, salva l'avanzamento in `supervisor_state` (`migration.sen55_scale`) e non applica mai due volte la correzione: se si interrompe, basta rilanciarlo con `--yes`. Durante la migrazione il supervisore è fermo, quindi anche l'interblocco: farla con la batteria ferma.

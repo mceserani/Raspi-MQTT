@@ -7,8 +7,9 @@ export const SENSOR_INFO = {
 	humidity: { label: 'Umidità', unit: '%' },
 	pm2_5: { label: 'PM2.5', unit: 'µg/m³' },
 	pm10: { label: 'PM10', unit: 'µg/m³' },
-	voc: { label: 'VOC', unit: 'ppb' },
-	nox: { label: 'NOx', unit: 'ppb' },
+	voc: { label: 'VOC', unit: 'indice' },
+	nox: { label: 'NOx', unit: 'indice' },
+	co2: { label: 'CO2', unit: 'ppm' },
 	ntc_temperature: { label: 'Temperatura NTC', unit: '°C' }
 };
 
@@ -17,6 +18,15 @@ export const RUN_STATE_LABELS = { 0: 'ferma', 1: 'carica', 2: 'scarica' };
 function round(value, digits = 1) {
 	const factor = 10 ** digits;
 	return Math.round(value * factor) / factor;
+}
+
+// Steps of one threshold direction, from the least to the most severe. Each
+// severity is a number or a list (several steps of the same severity, e.g.
+// CO2 warning at 1500 and again at 2000 ppm).
+const STEP_SEVERITIES = ['info', 'warning', 'critical'];
+function thresholdSteps(limits, direction) {
+	const steps = STEP_SEVERITIES.flatMap((severity) => [].concat(limits[severity] ?? []).map((limit) => ({ severity, limit })));
+	return steps.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || (direction === 'high' ? a.limit - b.limit : b.limit - a.limit));
 }
 
 function isRunStateCommand(ack) {
@@ -214,26 +224,22 @@ export class RuleEngine {
 		if (!limits) return null;
 
 		const key = `lab:threshold:${sensor}:${direction}`;
-		const current = this.active.get(key)?.severity;
+		const currentStep = this.active.get(key)?.step ?? -1;
 		const hysteresis = cfg.hysteresis ?? 0;
 		const beyond = (limit, margin) => (direction === 'high' ? value >= limit - margin : value <= limit + margin);
 
-		let severity = null;
-		let limit = null;
-		if (limits.critical !== undefined && beyond(limits.critical, current === 'critical' ? hysteresis : 0)) {
-			severity = 'critical';
-			limit = limits.critical;
-		} else if (limits.warning !== undefined && beyond(limits.warning, current ? hysteresis : 0)) {
-			severity = 'warning';
-			limit = limits.warning;
-		}
-		if (!severity) return null;
+		// The most severe step crossed; the hysteresis keeps the steps already reached
+		const steps = thresholdSteps(limits, direction);
+		const step = steps.findLastIndex((s, index) => beyond(s.limit, index <= currentStep ? hysteresis : 0));
+		if (step < 0) return null;
+		const { severity, limit } = steps.at(step);
 
 		return {
 			key,
 			source: 'lab',
 			type: 'threshold',
 			severity,
+			step,
 			sustain: cfg.sustain ?? 0,
 			message: `${info.label} ${direction === 'high' ? 'alta' : 'bassa'}: ${round(value)} ${info.unit} (soglia ${limit})`,
 			details: { sensor, direction, value: round(value, 2), limit, windowSeconds: cfg.window ?? null }

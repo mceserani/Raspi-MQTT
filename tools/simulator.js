@@ -13,16 +13,19 @@ import { fileURLToPath } from 'node:url';
 const LAB_TOPIC = 'sensors/lab';
 const BATTERY_TOPIC = process.env.BATTERY_MQTT_TOPIC ?? 'sensors/battery';
 
+// Scales of the board registers, as labsens-mqtt.js decodes them
 const LAB_SENSORS = [
-	{ name: 'temperature', unit: '°C', topic: 'temperature', base: 22, amplitude: 2, noise: 0.05 },
-	{ name: 'humidity', unit: '%', topic: 'humidity', base: 45, amplitude: 5, noise: 0.2 },
-	{ name: 'pm10', unit: 'µg/m³', topic: 'pm10', base: 12, amplitude: 4, noise: 1 },
-	{ name: 'pm2_5', unit: 'µg/m³', topic: 'pm2_5', base: 7, amplitude: 3, noise: 0.5 },
-	{ name: 'voc', unit: 'ppb', topic: 'voc', base: 100, amplitude: 30, noise: 3 },
-	{ name: 'nox', unit: 'ppb', topic: 'nox', base: 1, amplitude: 0.5, noise: 0.1 }
+	{ name: 'temperature', unit: '°C', topic: 'temperature', scale: 100, signed: true, base: 22, amplitude: 2, noise: 0.05 },
+	{ name: 'humidity', unit: '%', topic: 'humidity', scale: 100, base: 45, amplitude: 5, noise: 0.2 },
+	{ name: 'pm10', unit: 'µg/m³', topic: 'pm10', scale: 10, base: 12, amplitude: 4, noise: 1 },
+	{ name: 'pm2_5', unit: 'µg/m³', topic: 'pm2_5', scale: 10, base: 7, amplitude: 3, noise: 0.5 },
+	{ name: 'voc', unit: 'index', topic: 'voc', scale: 1, base: 100, amplitude: 30, noise: 3 },
+	{ name: 'nox', unit: 'index', topic: 'nox', scale: 1, base: 1, amplitude: 0.5, noise: 0.1 },
+	// Occupied lab: about 450 ppm at night, up to about 900 ppm early in the afternoon
+	{ name: 'co2', unit: 'ppm', topic: 'co2', scale: 1, base: 450, noise: 10, profile: (hours) => 450 * Math.max(0, Math.sin((Math.PI * (hours - 8.5)) / 9)) }
 ];
 
-const NTC_SENSOR = { name: 'ntc_temperature', unit: '°C', topic: 'ntc/temperature', divisor: 10 };
+const NTC_SENSOR = { name: 'ntc_temperature', unit: '°C', topic: 'ntc/temperature', scale: 10, signed: true };
 
 const STATE_TOPICS = [
 	{ key: 'currentSetpointMa', topic: 'current-setpoint', unit: 'mA' },
@@ -44,11 +47,12 @@ function toSigned16(value) {
 	return value > 0x7fff ? value - 0x10000 : value;
 }
 
-// labsens-mqtt.js reads an unsigned register and divides it: negative values
-// come out as ~655. The simulator reproduces this on purpose.
-export function labsensEncode(value, divisor) {
-	const raw = ((Math.round(value * divisor) % 0x10000) + 0x10000) % 0x10000;
-	return raw / divisor;
+// Value -> 16-bit register -> value decoded like labsens-mqtt.js: resolution
+// of the register scale, sign only where the register is signed (an unsigned
+// register cannot hold a negative value).
+export function labsensEncode(value, scale, signed = false) {
+	const raw = ((Math.round(value * scale) % 0x10000) + 0x10000) % 0x10000;
+	return (signed && raw >= 0x8000 ? raw - 0x10000 : raw) / scale;
 }
 
 export class LabModel {
@@ -62,16 +66,17 @@ export class LabModel {
 		const values = {};
 
 		for (const sensor of LAB_SENSORS) {
+			const trend = sensor.profile ? sensor.profile(hours) : sensor.amplitude * daily;
 			const value = this.overrides.has(sensor.name)
 				? this.overrides.get(sensor.name)
-				: Math.max(0, sensor.base + sensor.amplitude * daily + gaussianNoise(sensor.noise));
-			values[sensor.name] = labsensEncode(value, 100);
+				: Math.max(0, sensor.base + trend + gaussianNoise(sensor.noise));
+			values[sensor.name] = labsensEncode(value, sensor.scale, sensor.signed);
 		}
 
 		const ntc = this.overrides.has(NTC_SENSOR.name)
 			? this.overrides.get(NTC_SENSOR.name)
 			: this.overrides.get('temperature') ?? 22 + 2 * daily + 0.3 + gaussianNoise(0.1);
-		values[NTC_SENSOR.name] = labsensEncode(ntc, NTC_SENSOR.divisor);
+		values[NTC_SENSOR.name] = labsensEncode(ntc, NTC_SENSOR.scale, NTC_SENSOR.signed);
 
 		return values;
 	}

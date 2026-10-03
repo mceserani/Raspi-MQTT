@@ -48,7 +48,7 @@ Nel simulatore: `fault overvoltage`, `set pm2_5 120`, `pause lab 60`, `fault run
 
 | Regola | Chiave evento | Gravità |
 |---|---|---|
-| Soglia alta/bassa (media mobile `window`, dopo `sustain`, chiusura con `hysteresis`) | `lab:threshold:<sensore>:<high\|low>` | warning / critical |
+| Soglia alta/bassa (media mobile `window`, dopo `sustain`, chiusura con `hysteresis`) | `lab:threshold:<sensore>:<high\|low>` | info / warning / critical |
 | Lettura fuori dall'intervallo plausibile `valid` | `lab:invalid:<sensore>` | warning |
 | Variazione rapida (escursione > `maxDelta` in `per` secondi) | `lab:rate:<sensore>` | warning |
 | Nessun dato da `staleSeconds` | `lab:stale`, `battery:stale` | warning (critical se la batteria era in marcia) |
@@ -63,7 +63,9 @@ Nel simulatore: `fault overvoltage`, `set pm2_5 120`, `pause lab 60`, `fault run
 
 Tutte le soglie sono in [`config/supervisor.json`](../config/supervisor.json): i valori attuali sono **iniziali, da tarare**.
 
-Le temperature arrivano da `labsens-mqtt.js` senza segno (−1,5 °C diventa 653,86): il supervisore le corregge prima di valutarle e di aggregarle.
+Una soglia può avere i livelli `info`, `warning` e `critical`, e ogni livello può essere un numero o un elenco di gradini. Per la CO2: `info` 1000 ppm (registrato, non notificato), `warning` 1500 e 2000, `critical` 5000 (limite di esposizione lavorativa sulle 8 ore), media su 60 s, `sustain` 10 minuti, isteresi 50 ppm. Il passaggio a un gradino più alto della stessa gravità (da 1500 a 2000) arriva su Telegram come un aggravamento (🔺). Un evento aperto come info che passa a warning entra nel triage dell'agente.
+
+Fino al 3 ottobre 2026 `labsens-mqtt.js` pubblicava le temperature senza segno (−1,5 °C diventava 653,86): il supervisore le corregge ancora prima di valutarle e di aggregarle, per sicurezza; il servizio ora decodifica il segno da solo.
 
 ## Interblocco batteria
 

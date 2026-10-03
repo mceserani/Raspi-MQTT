@@ -40,12 +40,13 @@
   },
 
   "reports": {
-    "$comment": "Strumento get_report_data. references: valori guida su medie di 24 h (linee guida OMS 2021, µg/m³).",
+    "$comment": "Strumento get_report_data. references: valori guida su medie di 24 h (linee guida OMS 2021, µg/m³); con window hour si contano le ore con media oraria sopra il valore (CO2).",
     "maxDays": 31,
     "maxEventGroups": 15,
     "references": {
       "pm2_5": { "value": 15, "basis": "OMS 2021, media 24 h" },
-      "pm10": { "value": 45, "basis": "OMS 2021, media 24 h" }
+      "pm10": { "value": 45, "basis": "OMS 2021, media 24 h" },
+      "co2": { "value": 1000, "window": "hour", "basis": "aria da ricambiare sopra 1000 ppm (media oraria)" }
     }
   },
 
